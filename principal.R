@@ -41,3 +41,5 @@ rm(list=ls())
 
 # Limpiar entorno
 rm(list=ls())
+
+#mkafnijdfn
