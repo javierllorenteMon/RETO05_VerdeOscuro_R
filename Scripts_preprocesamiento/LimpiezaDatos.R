@@ -35,6 +35,19 @@ class(CPI_TS)
 time(CPI_TS)
 autoplot(CPI_TS)
 
+
+y_multi <- cbind(
+  PIB = Datos1$GDP.billion.currency.units,
+  CPI = Datos1$Consumer.Price.Index..CPI..
+)
+
+
+q_start <- Datos1$Month[1] / 3           # 3->1er trim, 6->2º, etc.
+TS_MULTI <- ts(y_multi, start = c(Datos1$Year[1], q_start), frequency = 4)
+class(TS_MULTI)
+autoplot(TS_MULTI)
+
+
 #write.csv(datos, file = file.path(path_datos_limpios,datos_limpios), row.names = FALSE)
 
 
