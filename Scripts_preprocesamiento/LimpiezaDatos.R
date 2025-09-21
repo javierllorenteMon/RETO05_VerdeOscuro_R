@@ -96,13 +96,17 @@ fit_arima <- auto.arima(train, seasonal = TRUE,
 fc_arima  <- forecast(fit_arima, h = h)
 
 # Comparación en test
-acc <- rbind(
-  SNAIVE = accuracy(fc_snaive, test),
-  RWDRFT = accuracy(fc_rw,     test),
-  ETS    = accuracy(fc_ets,    test),
-  ARIMA  = accuracy(fc_arima,  test)
-)
-acc[, c("RMSE","MAE","MAPE","MASE")]
+acc_df <- dplyr::bind_rows(
+  SNAIVE = as.data.frame(accuracy(fc_snaive, test)),
+  RWDRFT = as.data.frame(accuracy(fc_rw,     test)),
+  ETS    = as.data.frame(accuracy(fc_ets,    test)),
+  ARIMA  = as.data.frame(accuracy(fc_arima,  test)),
+  .id = "Modelo"
+) %>%
+  dplyr::select(Modelo, RMSE, MAE, MAPE, MASE) %>%
+  arrange(RMSE)
+
+acc_df
 
 # --- Predicción 2022-Q3 ---
 train_q3 <- window(GDP_TS, end = c(2022, 2))
@@ -119,3 +123,51 @@ fc_q4    <- forecast(fit_q4, h = 1)
 autoplot(fc_q4) + ggtitle("PIB Italia – Predicción 2022 Q4 (ETS)")
 fc_q4$mean
 fc_q4$lower; fc_q4$upper
+
+
+
+# =============================
+# Modelos Predictivos (IPC)
+# =============================
+
+# --- Validación ---
+ipc_train <- window(CPI_TS, end = c(2021, 4))
+ipc_test  <- window(CPI_TS, start = c(2022, 1), end = c(2022, 3))
+h_ipc <- length(ipc_test)  # 3
+
+# --- Modelos base + clásicos
+fc_ipc_snaive <- snaive(ipc_train, h = h_ipc)
+fc_ipc_rw     <- rwf(ipc_train, h = h_ipc, drift = TRUE)
+fit_ipc_ets   <- ets(ipc_train);   fc_ipc_ets   <- forecast(fit_ipc_ets, h = h_ipc)
+fit_ipc_arima <- auto.arima(ipc_train, seasonal = TRUE,
+                            stepwise = FALSE, approximation = FALSE)
+fc_ipc_arima  <- forecast(fit_ipc_arima, h = h_ipc)
+
+# --- Comparación en test
+acc_df_ipc <- dplyr::bind_rows(
+  SNAIVE = as.data.frame(accuracy(fc_ipc_snaive, ipc_test)),
+  RWDRFT = as.data.frame(accuracy(fc_ipc_rw,     ipc_test)),
+  ETS    = as.data.frame(accuracy(fc_ipc_ets,    ipc_test)),
+  ARIMA  = as.data.frame(accuracy(fc_ipc_arima,  ipc_test)),
+  .id = "Modelo"
+) %>%
+  dplyr::select(Modelo, RMSE, MAE, MAPE, MASE) %>%
+  arrange(RMSE)
+
+acc_df_ipc
+
+# --- Predicción 2022-Q3 ---
+ipc_train_q3 <- window(CPI_TS, end = c(2022, 2))
+fit_ipc_q3   <- ets(ipc_train_q3)
+fc_ipc_q3    <- forecast(fit_ipc_q3, h = 1)
+autoplot(fc_ipc_q3) + ggtitle("IPC Italia – Predicción 2022 Q3 (ETS)")
+fc_ipc_q3$mean
+fc_ipc_q3$lower; fc_ipc_q3$upper
+
+# --- Predicción 2022-Q4 ---
+ipc_train_q4 <- window(CPI_TS, end = c(2022, 3))
+fit_ipc_q4   <- ets(ipc_train_q4)
+fc_ipc_q4    <- forecast(fit_ipc_q4, h = 1)
+autoplot(fc_ipc_q4) + ggtitle("IPC Italia – Predicción 2022 Q4 (ETS)")
+fc_ipc_q4$mean
+fc_ipc_q4$lower; fc_ipc_q4$upper
