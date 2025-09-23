@@ -20,15 +20,15 @@ vis_miss(exogenas_ITA)
 miss_var_summary(pib_ipc_ITA)
 miss_var_summary(exogenas_ITA)
 
-# Eliminar filas con NA para dejar los datos trimestrales
+# Eliminar filas con NA para dejar los datos trimestrales (el PIB ya estan trimestrales)
 pib_ITA <- pib_ipc_ITA %>% filter(!is.na(GDP.billion.currency.units)) %>% select(GDP.billion.currency.units)
 
 # Dejar los datos de "exogenas" trimestralmente (estan mensuales)
 #exogenas_ITA <- exogenas_ITA %>% filter(Month %in% c(3,6,9,12))
 
-# Convertir a series temporales
+# Convertir a series temporales trimestrales
 PIB_TS <- ts(pib_ITA,start = c(1996,1), frequency = 4)
-PNC_TS <- ts(pib_ipc_ITA$Consumer.Price.Index..CPI. ,start = c(1996,1), frequency = 12)
+IPC_TS <- ts(pib_ipc_ITA$Consumer.Price.Index..CPI. ,start = c(1996,1), frequency = 12)
 MS_TS <- ts(exogenas_ITA$Money.supply.billion.currency.units, start = c(1999, 1), frequency = 12)
 UR_TS <- ts(exogenas_ITA$Unemployment.rate.percent, start = c(1996, 1), frequency = 12)
 SMI_TS <- ts(exogenas_ITA$Stock.market.index, start = c(1996, 1), frequency = 12)
@@ -43,15 +43,15 @@ autoplot(PIB_TS)
 autoplot(diff(PIB_TS))
 acf(PIB_TS)
 
-class(PNC_TS)
-time(PNC_TS)
-autoplot(PNC_TS)
-frequency(PNC_TS)
-start(PNC_TS)
-end(PNC_TS)
-autoplot(PNC_TS)
-autoplot(diff(PNC_TS))
-acf(PNC_TS)
+class(IPC_TS)
+time(IPC_TS)
+autoplot(IPC_TS)
+frequency(IPC_TS)
+start(IPC_TS)
+end(IPC_TS)
+autoplot(IPC_TS)
+autoplot(diff(IPC_TS))
+acf(IPC_TS)
 
 class(MS_TS)
 time(MS_TS)
