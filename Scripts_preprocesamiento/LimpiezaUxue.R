@@ -20,18 +20,40 @@ vis_miss(exogenas_ITA)
 miss_var_summary(pib_ipc_ITA)
 miss_var_summary(exogenas_ITA)
 
-# Eliminar filas con NA para dejar los datos trimestrales (el PIB ya estan trimestrales)
-pib_ITA <- pib_ipc_ITA %>% filter(!is.na(GDP.billion.currency.units)) %>% select(GDP.billion.currency.units)
+# Eliminar filas con NA para dejar los datos trimestrales (el PIB ya esta trimestral, por eso con eliminar las filas vacias vale)
+pib_ITA <- pib_ipc_ITA %>% 
+  filter(!is.na(GDP.billion.currency.units)) %>% 
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, PIB_t = GDP.billion.currency.units)
 
-# Dejar los datos de "exogenas" trimestralmente (estan mensuales)
-#exogenas_ITA <- exogenas_ITA %>% filter(Month %in% c(3,6,9,12))
+# Pasar todos lo demás datos a trimestrales (estan mensuales)
+ipc_ITA <- pib_ipc_ITA %>% 
+  group_by(Year, Quarter = ceiling(Month/3)) %>%
+  summarise(IPC_t = mean(Consumer.Price.Index..CPI., na.rm = TRUE)) %>%
+  ungroup()
+
+MS_ITA <- exogenas_ITA %>%
+  filter(Month %in% c(3,6,9,12)) %>%
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, MS_t = Money.supply.billion.currency.units)
+
+UR_ITA <- exogenas_ITA %>%
+  group_by(Year, Quarter = ceiling(Month/3)) %>%
+  summarise(UR_t = mean(as.numeric(Unemployment.rate.percent), na.rm = TRUE)) %>%
+  ungroup()
+
+SMI_ITA <- exogenas_ITA %>%
+  filter(Month %in% c(3,6,9,12)) %>%
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, SMI_t = Stock.market.index)
+
 
 # Convertir a series temporales trimestrales
-PIB_TS <- ts(pib_ITA,start = c(1996,1), frequency = 4)
-IPC_TS <- ts(pib_ipc_ITA$Consumer.Price.Index..CPI. ,start = c(1996,1), frequency = 12)
-MS_TS <- ts(exogenas_ITA$Money.supply.billion.currency.units, start = c(1999, 1), frequency = 12)
-UR_TS <- ts(exogenas_ITA$Unemployment.rate.percent, start = c(1996, 1), frequency = 12)
-SMI_TS <- ts(exogenas_ITA$Stock.market.index, start = c(1996, 1), frequency = 12)
+PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+IPC_TS <- ts(ipc_ITA$IPC_t, start = c(min(ipc_ITA$Year), min(ipc_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+MS_TS <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+UR_TS <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+SMI_TS <- ts(SMI_ITA$SMI_q, start = c(min(SMI_ITA$Year), min(SMI_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 
 # Analizar series temporales
 class(PIB_TS)
@@ -45,7 +67,6 @@ acf(PIB_TS)
 
 class(IPC_TS)
 time(IPC_TS)
-autoplot(IPC_TS)
 frequency(IPC_TS)
 start(IPC_TS)
 end(IPC_TS)
@@ -87,8 +108,8 @@ acf(SMI_TS)
 decomPIB <- decompose(PIB_TS)
 autoplot(decomPIB)
 
-decomPNC <- decompose(PNC_TS)
-autoplot(decomPNC)
+decomIPC <- decompose(IPC_TS)
+autoplot(decomIPC)
 
 # 
 
