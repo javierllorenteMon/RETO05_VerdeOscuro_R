@@ -7,6 +7,7 @@ library(naniar)
 library(forecast)
 library(ggplot2)
 library(fpp2)
+library(tseries)
 
 # Cargar ficheros
 pib_ipc_Paises <- read.csv('Datos/Originales/pib_ipc_paises_punto2.csv')
@@ -231,5 +232,79 @@ autoplot(decomUR)
 
 decomSMI <- decompose(SMI_sinO)
 autoplot(decomSMI)
+
+# Comprobar estacionariedad con los test (seguramente sean no estacionarias porque no las hemos suavizado todavía)
+
+# Definir funciones de cada test
+
+# Test adf : sirve para detectar si queda tendencia estocástica.
+test_adf <- function(serie){
+  resultado <- adf.test(serie)
+  pvalor <- resultado$p.value
+  
+  if(pvalor < 0.05){
+    cat("=== Test ADF ===\n")
+    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n")
+  } else {
+    cat("=== Test ADF ===\n")
+    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n")
+  }
+}
+
+# Test kpss : lo contrario a adf, dice si queda tendencia determinista o varianza no constante.
+test_kpss <- function(serie){
+  resultado <- kpss.test(serie, null="Level")
+  pvalor <- resultado$p.value
+  
+  if(pvalor < 0.05){
+    cat("=== Test KPSS ===\n")
+    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n")
+  } else {
+    cat("=== Test KPSS ===\n")
+    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n")
+  }
+}
+
+# Test LB : dice si los residuos de un modelo se comportan como ruido blanco, se usa despues de ajustar un modelo.
+test_lb <- function(serie, lags=12){
+  resultado <- Box.test(serie, lag=lags, type="Ljung-Box")
+  pvalor <- resultado$p.value
+  
+  if(pvalor < 0.05){
+    cat("=== Test Ljung-Box ===\n")
+    cat("p-valor:", pvalor, "→ Serie con autocorrelación (NO ruido blanco)\n\n")
+  } else {
+    cat("=== Test Ljung-Box ===\n")
+    cat("p-valor:", pvalor, "→ Serie SIN autocorrelación (ruido blanco)\n\n")
+  }
+}
+
+# Aplicar los test a las series temporales
+test_adf(PIB_sinO)
+test_kpss(PIB_sinO)
+test_lb(PIB_sinO)
+
+test_adf(IPC_sinO)
+test_kpss(IPC_sinO)
+test_lb(IPC_sinO)
+
+test_adf(MS_sinO)
+test_kpss(MS_sinO)
+test_lb(MS_sinO)
+
+test_adf(UR_sinO)
+test_kpss(UR_sinO)
+test_lb(UR_sinO)
+
+test_adf(SMI_sinO)
+test_kpss(SMI_sinO)
+test_lb(SMI_sinO)
+
+
+# Todas las series son NO estacionarias, asi que aplicamos diff y log para suavizarlas
+test_adf(diff(diff(log(PIB_sinO)), lag = 4))
+test_kpss(diff(diff(log(PIB_sinO)), lag = 4))
+test_lb(diff(diff(log(PIB_sinO)), lag = 4))
+
 
 
