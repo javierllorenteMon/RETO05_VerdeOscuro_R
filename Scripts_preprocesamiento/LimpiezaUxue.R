@@ -24,7 +24,7 @@ miss_var_summary(pib_ipc_ITA)
 miss_var_summary(exogenas_ITA)
 
 # Rellenar datos faltantes (son pocos asi que se buscan en internet y se imputan a mano)
-
+pib_ipc_ITA$GDP.billion.currency.units[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 500.653
 
 # Eliminar filas con NA para dejar los datos trimestrales (el PIB ya esta trimestral, por eso con eliminar las filas vacias vale)
 pib_ITA <- pib_ipc_ITA %>% 
@@ -302,9 +302,41 @@ test_lb(SMI_sinO)
 
 
 # Todas las series son NO estacionarias, asi que aplicamos diff y log para suavizarlas
-test_adf(diff(diff(log(PIB_sinO)), lag = 4))
-test_kpss(diff(diff(log(PIB_sinO)), lag = 4))
-test_lb(diff(diff(log(PIB_sinO)), lag = 4))
+test_adf(diff(log(PIB_sinO), lag = 4, differences = 2))
+test_kpss(diff(log(PIB_sinO), lag = 4, differences = 2))
+test_lb(diff(diff(diff(log(PIB_sinO)), lag = 4)))
+
+tsdisplay(PIB_sinO)
+tsdisplay(diff(log(PIB_sinO), lag = 4, differences = 2))
+
+ndiffs(PIB_sinO)
+nsdiffs(PIB_sinO)
+
+# diff(diff(diff(log(PIB_sinO)), lag = 4))
+# diff(log(PIB_sinO), lag = 4, differences = 4)
+
+test_adf(diff(log(IPC_sinO), lag = 4, differences = 3))
+test_kpss(diff(log(IPC_sinO), lag = 4, differences = 2))
+test_lb(diff(diff(diff(log(IPC_sinO)), lag = 4)))
+
+ndiffs(IPC_sinO)
+nsdiffs(IPC_sinO)
+
+test_adf(diff(log(MS_sinO), lag = 4, differences = 2))
+test_kpss(diff(log(MS_sinO), lag = 4, differences = 2))
+test_lb(diff(log(MS_sinO), lag = 4, differences = 20))
+
+ndiffs(MS_sinO)
+nsdiffs(MS_sinO)
+
+tsdisplay(MS_sinO)
+tsdisplay(diff(log(MS_sinO), lag = 4, differences = 2))
 
 
+test_adf(diff(log(UR_sinO), lag = 4, differences = 2))
+test_kpss(diff(log(UR_sinO), lag = 4, differences = 2))
+test_lb(diff(UR_sinO, lag = 4, differences = 1))
+
+tsdisplay(UR_sinO)
+tsdisplay(diff(log(UR_sinO), lag = 4, differences = 2))
 
