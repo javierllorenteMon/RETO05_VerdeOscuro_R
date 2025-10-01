@@ -224,7 +224,7 @@ saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
 saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")
 
 # Guardar graficos
-ggsave(grafico_outliers_PIB, "Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", )
+ggsave(grafico_outliers_PIB, "Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf")
 ggsave(grafico_outliers_IPC, "Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf")
 ggsave(grafico_outliers_MS, "Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf")
 ggsave(grafico_outliers_UR, "Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf")
