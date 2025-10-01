@@ -217,8 +217,8 @@ grafico_outliers_SMI <- ggplot(df_SMI, aes(x = Year + (Quarter-1)/4)) +
   labs(x = "Año", y = "Stock Market Index", color = "Serie")
 
 # Guardar los datos limpios
-saveRDS(PIB_sinO, "PIB_sinO.rds")
-saveRDS(IPC_sinO, "IPC_sinO.rds")
-saveRDS(MS_sinO, "MS_sinO.rds")
-saveRDS(UR_sinO, "UR_sinO.rds")
-saveRDS(SMI_sinO, "SMI_sinO.rds")
+saveRDS(PIB_sinO, "Datos/transformados/PIB_sinO.rds")
+saveRDS(IPC_sinO, "Datos/transformados/IPC_sinO.rds")
+saveRDS(MS_sinO, "Datos/transformados/MS_sinO.rds")
+saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
+saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")

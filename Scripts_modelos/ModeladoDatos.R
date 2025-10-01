@@ -12,11 +12,11 @@ library(fpp2)
 library(tseries)
 
 # Cargar ficheros
-saveRDS(PIB_sinO, "PIB_sinO.rds")
-saveRDS(IPC_sinO, "IPC_sinO.rds")
-saveRDS(MS_sinO, "MS_sinO.rds")
-saveRDS(UR_sinO, "UR_sinO.rds")
-saveRDS(SMI_sinO, "SMI_sinO.rds")
+PIB_sinO <- readRDS("Datos/transformados/PIB_sinO.rds")
+IPC_sinO <- readRDS("Datos/transformados/IPC_sinO.rds")
+MS_sinO <- readRDS("Datos/transformados/MS_sinO.rds")
+UR_sinO <- readRDS("Datos/transformados/UR_sinO.rds")
+SMI_sinO <- readRDS("Datos/transformados/SMI_sinO.rds")
 
 # Descomposición de componentes
 decomPIB <- decompose(PIB_sinO)
