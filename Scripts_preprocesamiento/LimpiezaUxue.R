@@ -222,3 +222,10 @@ saveRDS(IPC_sinO, "Datos/transformados/IPC_sinO.rds")
 saveRDS(MS_sinO, "Datos/transformados/MS_sinO.rds")
 saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
 saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")
+
+# Guardar graficos
+ggsave(grafico_outliers_PIB, "Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", )
+ggsave(grafico_outliers_IPC, "Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf")
+ggsave(grafico_outliers_MS, "Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf")
+ggsave(grafico_outliers_UR, "Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf")
+ggsave(grafico_outliers_SMI, "Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.pdf")
