@@ -27,13 +27,13 @@ miss_var_summary(exogenas_ITA)
 
 # Rellenar datos faltantes (son pocos asi que se buscan en internet y se imputan a mano)
 pib_ipc_ITA$GDP.billion.currency.units[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 500.653
-pib_ipc_ITA$Consumer.Price.Index..CPI.[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <-  114.2
+pib_ipc_ITA$Consumer.Price.Index..CPI.[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 114.2
 
-exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <-  1922.92
-exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <-  1915.16
-exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <-  8.1
-exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <-  7.9
-exogenas_ITA$Stock.market.index[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <-  108.39
+exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 1922.92
+exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 1915.16
+exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 8.1
+exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 7.9
+exogenas_ITA$Stock.market.index[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 108.39
 
 # Eliminar filas con NA para dejar los datos trimestrales (el PIB ya esta trimestral, por eso con eliminar las filas vacias vale)
 pib_ITA <- pib_ipc_ITA %>% 
@@ -236,3 +236,4 @@ ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf", grafico_out
 ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf",  grafico_outliers_MS)
 ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf",  grafico_outliers_UR)
 ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.pdf", grafico_outliers_SMI)
+

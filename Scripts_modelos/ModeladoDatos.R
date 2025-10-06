@@ -21,8 +21,6 @@ SMI_sinO <- readRDS("Datos/transformados/SMI_sinO.rds")
 # Descomposición de componentes
 decomPIB <- decompose(PIB_sinO)
 autoplot(decomPIB)
-x<- decompose(PIB_TS)
-autoplot(x)
 
 decomIPC <- decompose(IPC_sinO)
 autoplot(decomIPC)
@@ -104,7 +102,7 @@ test_kpss(SMI_sinO)
 test_lb(SMI_sinO)
 
 
-# Todas las series son NO estacionarias, asi que aplicamos diff y log para suavizarlas
+# Todas las series son NO estacionarias, asi que aplicamos diff y log para hacerlas estacionarias
 test_adf(diff(log(PIB_sinO), lag = 4, differences = 2))
 test_kpss(diff(log(PIB_sinO), lag = 4, differences = 2))
 test_lb(diff(diff(diff(log(PIB_sinO)), lag = 4)))
@@ -142,4 +140,5 @@ test_lb(diff(UR_sinO, lag = 4, differences = 1))
 
 tsdisplay(UR_sinO)
 tsdisplay(diff(log(UR_sinO), lag = 4, differences = 2))
+
 
