@@ -145,3 +145,13 @@ SMI_est <- diff(SMI_sinO, differences = 1)
 tsdisplay(SMI_est)
 test_estacionariedad(SMI_est, nombre = "SMI")
 
+# Modelado
+
+# PIB
+# Train(2000,1)(2021,2) test(2021,2)(2022,2)
+train_PIB <- window(PIB_est, start = c(2000, 1), end = c(2021, 1))
+test_PIB <- window(PIB_est, start = c(2021, 2), end = c(2022, 2))
+
+# auto.arima
+fit_PIB <- auto.arima(PIB_est, seasonal = FALSE)
+
