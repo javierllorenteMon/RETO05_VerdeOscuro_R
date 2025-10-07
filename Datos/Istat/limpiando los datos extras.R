@@ -32,7 +32,7 @@ evolucion_empleo <- datos %>%
   arrange(Año, Trimestre)
 
 
-#write_csv(evolucion_empleo, "evolucion_empleo_italia.csv")
+write_csv(evolucion_empleo, "evolucion_empleo_italia.csv")
 
 
 
@@ -67,7 +67,7 @@ evolucion_salarios <- datos_salarios %>%
   arrange(año, trimestre) %>%
   filter(!is.na(indice_salarios))
 
-#write_csv(evoluciondesalairos, "evolucion_salarios")
+write_csv(evolucion_salarios, "evolucion_salarios.csv")
 
 
 
@@ -109,7 +109,7 @@ productividad_trimestral <- productividad_italia %>%
   select(año, trimestre, productividad) %>%
   arrange(año, trimestre)
 
-#write_csv(productividad_trimestral, "productividad_laboral_trimestral_italia.csv")
+write_csv(productividad_trimestral, "productividad_laboral_trimestral_italia.csv")
 
 
 ################################################################################
@@ -145,7 +145,7 @@ revenue_vs_expenditure <- economic_data %>%
   ) %>%
   arrange(Año, Trimestre)
 
-#write_csv(ingresosvsgastodelgobierno, "revenue_vs_expenditure")
+write_csv(revenue_vs_expenditure, "revenue_vs_expenditure.csv")
 
 
 ################################################################################
@@ -154,13 +154,14 @@ revenue_vs_expenditure <- economic_data %>%
 ################################################################################
 ################################################################################
 
-df <- read.csv("Datos/Istat/employment rate.csv", sep = ";", fileEncoding = "UTF-8")
-result <- subset(df, AGE == "Y15-74", select = c(TIME_PERIOD, Observation))
-result$YEAR <- as.numeric(sub("-Q.*", "", result$TIME_PERIOD))
-result$QUARTER <- paste0("Q", sub(".*-Q", "", result$TIME_PERIOD))
-result <- result[c("YEAR", "QUARTER", "Observation")]
+df_empleo <- read.csv("Datos/Istat/employment rate.csv", sep = ";", fileEncoding = "UTF-8")
+result_empleo <- subset(df_empleo, AGE == "Y15-74", select = c(TIME_PERIOD, Observation))
+result_empleo$YEAR <- as.numeric(sub("-Q.*", "", result_empleo$TIME_PERIOD))
+result_empleo$QUARTER <- paste0("Q", sub(".*-Q", "", result_empleo$TIME_PERIOD))
+result_empleo$EMPLEO <- as.numeric(result_empleo$Observation)  # Corregido: asignar la columna EMPLEO
+result_empleo <- result_empleo[c("YEAR", "QUARTER", "EMPLEO")]
 
-print(head(result, 10))
+print(head(result_empleo, 10))
 
 
 
@@ -170,12 +171,64 @@ print(head(result, 10))
 ################################################################################
 ################################################################################
 
-df <- read.csv("Datos/Istat/unemployment rate.csv", sep = ";", fileEncoding = "UTF-8")
-result <- subset(df, AGE == "Y15-74", select = c(TIME_PERIOD, Observation))
-result$YEAR <- as.numeric(sub("-Q.*", "", result$TIME_PERIOD))
-result$QUARTER <- paste0("Q", sub(".*-Q", "", result$TIME_PERIOD))
-result <- result[c("YEAR", "QUARTER", "Observation")]
+df_desempleo <- read.csv("Datos/Istat/unemployment rate.csv", sep = ";", fileEncoding = "UTF-8")
+result_desempleo <- subset(df_desempleo, AGE == "Y15-74", select = c(TIME_PERIOD, Observation))
+result_desempleo$YEAR <- as.numeric(sub("-Q.*", "", result_desempleo$TIME_PERIOD))
+result_desempleo$QUARTER <- paste0("Q", sub(".*-Q", "", result_desempleo$TIME_PERIOD))
+result_desempleo$DESEMPLEO <- as.numeric(result_desempleo$Observation)  # Corregido: asignar la columna DESEMPLEO
+result_desempleo <- result_desempleo[c("YEAR", "QUARTER", "DESEMPLEO")]
 
-print(head(result, 10))
+print(head(result_desempleo, 10))
 
 
+
+# Unir ambos dataframes por YEAR y QUARTER
+df_unificado <- merge(result_empleo, result_desempleo, by = c("YEAR", "QUARTER"), all = TRUE)
+
+# Ordenar por año y trimestre
+df_unificado <- df_unificado[order(df_unificado$YEAR, df_unificado$QUARTER), ]
+
+# Mostrar el dataframe unificado
+print("Dataframe unificado - Tasas de empleo y desempleo:")
+print(head(df_unificado, 15))
+print(str(df_unificado))
+
+write.csv(df_unificado, "Datos/definitivo_tasas_empleo_desempleo.csv")
+
+################################################################################
+################################################################################
+############################### "EXPORTACIONES" ############################
+################################################################################
+################################################################################
+df <- read.csv("Datos/Istat/exportaciones_importaciones.csv", sep = ",", fileEncoding = "UTF-8")
+
+# Procesar exportaciones
+exportaciones <- df %>%
+  filter(grepl("Exports", Aggregate, ignore.case = TRUE)) %>%       
+  select(TIME_PERIOD, Observation) %>%
+  separate(TIME_PERIOD, into = c("anio", "trimestre"), sep = "-") %>%
+  group_by(anio, trimestre) %>%
+  summarise(exportaciones = sum(as.numeric(Observation), na.rm = TRUE)) %>%  # Cambiado nombre
+  ungroup()
+
+# Procesar importaciones
+importaciones <- df %>%
+  filter(grepl("Imports", Aggregate, ignore.case = TRUE)) %>%       
+  select(TIME_PERIOD, Observation) %>%
+  separate(TIME_PERIOD, into = c("anio", "trimestre"), sep = "-") %>%
+  group_by(anio, trimestre) %>%
+  summarise(importaciones = sum(as.numeric(Observation), na.rm = TRUE)) %>%  # Cambiado nombre
+  ungroup()
+
+# Unir ambos dataframes
+comercio_exterior <- exportaciones %>%
+  full_join(importaciones, by = c("anio", "trimestre")) %>%
+  arrange(anio, trimestre)
+
+# Mostrar resultado
+print("Dataframe unificado de comercio exterior:")
+print(head(comercio_exterior, 15))
+print(str(comercio_exterior))
+
+# Guardar como un solo CSV
+write.csv(comercio_exterior, "Datos/comercio_exterior_unificado.csv")
