@@ -36,109 +36,112 @@ autoplot(decomSMI)
 
 # Comprobar estacionariedad con los test (seguramente sean no estacionarias porque no las hemos suavizado todavía)
 
-# Definir funciones de cada test
-
 # Test adf : sirve para detectar si queda tendencia estocástica.
-test_adf <- function(serie){
-  resultado <- adf.test(serie)
-  pvalor <- resultado$p.value
-  
-  if(pvalor < 0.05){
-    cat("=== Test ADF ===\n")
-    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n")
-  } else {
-    cat("=== Test ADF ===\n")
-    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n")
-  }
+test_adf <- function(serie){ 
+  resultado <- adf.test(serie) 
+  pvalor <- resultado$p.value 
+  if(pvalor < 0.05){ 
+    cat("=== Test ADF ===\n") 
+    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n") } 
+  else { cat("=== Test ADF ===\n") 
+    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n") 
+  } 
 }
 
 # Test kpss : lo contrario a adf, dice si queda tendencia determinista o varianza no constante.
-test_kpss <- function(serie){
-  resultado <- kpss.test(serie, null="Level")
-  pvalor <- resultado$p.value
-  
-  if(pvalor < 0.05){
-    cat("=== Test KPSS ===\n")
-    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n")
-  } else {
-    cat("=== Test KPSS ===\n")
-    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n")
-  }
+test_kpss <- function(serie){ 
+  resultado <- kpss.test(serie, null="Level") 
+  pvalor <- resultado$p.value 
+  if(pvalor < 0.05){ 
+    cat("=== Test KPSS ===\n") 
+    cat("p-valor:", pvalor, "→ Serie NO estacionaria\n\n") 
+  } 
+  else { 
+    cat("=== Test KPSS ===\n") 
+    cat("p-valor:", pvalor, "→ Serie ESTACIONARIA\n\n") 
+  } 
 }
 
 # Test LB : dice si los residuos de un modelo se comportan como ruido blanco, se usa despues de ajustar un modelo.
-test_lb <- function(serie, lags=12){
-  resultado <- Box.test(serie, lag=lags, type="Ljung-Box")
-  pvalor <- resultado$p.value
-  
-  if(pvalor < 0.05){
-    cat("=== Test Ljung-Box ===\n")
-    cat("p-valor:", pvalor, "→ Serie con autocorrelación (NO ruido blanco)\n\n")
-  } else {
-    cat("=== Test Ljung-Box ===\n")
-    cat("p-valor:", pvalor, "→ Serie SIN autocorrelación (ruido blanco)\n\n")
+test_lb <- function(serie, lags=12){ 
+  resultado <- Box.test(serie, lag=lags, type="Ljung-Box") 
+  pvalor <- resultado$p.value 
+  if(pvalor < 0.05){ 
+    cat("=== Test Ljung-Box ===\n") 
+    cat("p-valor:", pvalor, "→ Serie con autocorrelación (NO ruido blanco)\n\n") } 
+  else { 
+    cat("=== Test Ljung-Box ===\n") 
+    cat("p-valor:", pvalor, "→ Serie SIN autocorrelación (ruido blanco)\n\n") 
   }
 }
 
+# Juntar todos los test en una sola funcion
+test_estacionariedad <- function(serie, nombre="Serie") {
+  cat("=== ", nombre, " ===\n")
+  test_adf(serie)
+  test_kpss(serie)
+  test_lb(serie)
+  cat("\n---------------------------\n")
+}
+
 # Aplicar los test a las series temporales
-test_adf(PIB_sinO)
-test_kpss(PIB_sinO)
-test_lb(PIB_sinO)
+test_estacionariedad(PIB_sinO, nombre = "PIB")
 
-test_adf(IPC_sinO)
-test_kpss(IPC_sinO)
-test_lb(IPC_sinO)
+test_estacionariedad(IPC_sinO, nombre = "IPC")
 
-test_adf(MS_sinO)
-test_kpss(MS_sinO)
-test_lb(MS_sinO)
+test_estacionariedad(MS_sinO, nombre = "MS")
 
-test_adf(UR_sinO)
-test_kpss(UR_sinO)
-test_lb(UR_sinO)
+test_estacionariedad(UR_sinO, nombre = "UR")
 
-test_adf(SMI_sinO)
-test_kpss(SMI_sinO)
-test_lb(SMI_sinO)
+test_estacionariedad(SMI_sinO, nombre = "SMI")
 
+# Todas las series son NO estacionarias (damos por hecho que son estacionarias cuando pasan al menos 2 tests), asi que aplicamos diff y log para hacerlas estacionarias
 
-# Todas las series son NO estacionarias, asi que aplicamos diff y log para hacerlas estacionarias
-test_adf(diff(log(PIB_sinO), lag = 4, differences = 2))
-test_kpss(diff(log(PIB_sinO), lag = 4, differences = 2))
-test_lb(diff(diff(diff(log(PIB_sinO)), lag = 4)))
+# Primero comprobar cuales tienen varianza creciente para aplicarles log a esas (a las otras solo en caso de que no se hagan estacionarias con diff)
+ts.plot(PIB_sinO) # si parece tener varianza creciente
+ts.plot(IPC_sinO) # tambien
+ts.plot(MS_sinO) # no
+ts.plot(UR_sinO) # no
+ts.plot(SMI_sinO) # no
 
-tsdisplay(PIB_sinO)
-tsdisplay(diff(log(PIB_sinO), lag = 4, differences = 2))
-
-ndiffs(PIB_sinO)
+# Ahora comprobar estacionalidad para ver a cuales meterles lag en diff
+# Con nsdiffs (que evalua si hace falta diferencia estacional) si da 1 tiene estacionalidad si da 0 no
 nsdiffs(PIB_sinO)
-
-# diff(diff(diff(log(PIB_sinO)), lag = 4))
-# diff(log(PIB_sinO), lag = 4, differences = 4)
-
-test_adf(diff(log(IPC_sinO), lag = 4, differences = 3))
-test_kpss(diff(log(IPC_sinO), lag = 4, differences = 2))
-test_lb(diff(diff(diff(log(IPC_sinO)), lag = 4)))
-
-ndiffs(IPC_sinO)
 nsdiffs(IPC_sinO)
-
-test_adf(diff(log(MS_sinO), lag = 4, differences = 2))
-test_kpss(diff(log(MS_sinO), lag = 4, differences = 2))
-test_lb(diff(log(MS_sinO), lag = 4, differences = 20))
-
-ndiffs(MS_sinO)
 nsdiffs(MS_sinO)
+nsdiffs(UR_sinO)
+nsdiffs(SMI_sinO) # no hay estacionalidad
+
+# Tambien comprobamos la estacionalidad con acf (si tiene pico en lag = 4 hay estacionalidad) (si decae lentamente o no muestra patrón periódico, sin estacionalidad fuerte)
+acf(PIB_sinO)
+acf(IPC_sinO)
+acf(MS_sinO)
+acf(UR_sinO) # no tiene estacionalidad
+acf(SMI_sinO) # no tiene estacionalidad
+
+# Test estacionariedad (si a las series que tienen estacinoalidad, al meter lag los test piden mas diferencias, no metemos lag)
+tsdisplay(PIB_sinO)
+PIB_est <- diff(log(PIB_sinO), differences = 1)
+tsdisplay(PIB_est)
+test_estacionariedad(PIB_est, nombre = "PIB")
+
+tsdisplay(IPC_sinO)
+IPC_est <- diff(diff(IPC_sinO), lag = 4)
+tsdisplay(IPC_est)
+test_estacionariedad(IPC_est, nombre = "IPC")
 
 tsdisplay(MS_sinO)
-tsdisplay(diff(log(MS_sinO), lag = 4, differences = 2))
-
-
-test_adf(diff(log(UR_sinO), lag = 4, differences = 2))
-test_kpss(diff(log(UR_sinO), lag = 4, differences = 2))
-test_lb(diff(UR_sinO, lag = 4, differences = 1))
+MS_est <- diff(log(MS_sinO), differences = 1)
+tsdisplay(MS_est)
+test_estacionariedad(MS_est, nombre = "MS")
 
 tsdisplay(UR_sinO)
-tsdisplay(diff(log(UR_sinO), lag = 4, differences = 2))
+UR_est <- diff(UR_sinO, differences = 2)
+tsdisplay(UR_est)
+test_estacionariedad(UR_est, nombre = "UR")
 
+tsdisplay(SMI_sinO)
+SMI_est <- diff(SMI_sinO, differences = 1)
+tsdisplay(SMI_est)
+test_estacionariedad(SMI_est, nombre = "SMI")
 
