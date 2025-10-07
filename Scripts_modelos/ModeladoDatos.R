@@ -153,10 +153,21 @@ train_PIB <- window(PIB_est, start = c(2000, 1), end = c(2021, 1))
 test_PIB <- window(PIB_est, start = c(2021, 2), end = c(2022, 2))
 
 # auto.arima
-fit_PIB <- auto.arima(train_PIB, seasonal = FALSE)
-summary(fit_PIB)
-checkresiduals(fit_PIB)
+modelo_PIB_autoArima <- auto.arima(train_PIB, seasonal = FALSE)
+summary(modelo_PIB_autoArima)
+checkresiduals(modelo_PIB_autoArima)
 
-pred_PIB <- forecast(fit_PIB, h = length(test_PIB))
+pred_PIB_autoArima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
 
-accuracy_PIB <- accuracy(pred_PIB, test_PIB)
+accuracy_PIB_autoArima <- accuracy(pred_PIB_autoArima, test_PIB)
+
+# SARIMA
+modelo_PIB_sarima <- auto.arima(train_PIB, seasonal = FALSE)
+summary(modelo_PIB_sarima)
+checkresiduals(modelo_PIB_sarima)
+
+pred_PIB_sarima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
+
+accuracy_PIB_sarima <- accuracy(pred_PIB_sarima, test_PIB)
+
+
