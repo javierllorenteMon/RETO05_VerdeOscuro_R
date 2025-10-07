@@ -24,7 +24,7 @@ evolucion_empleo <- datos %>%
   filter(grepl("Q", Periodo)) %>%
   mutate(
     Año = as.numeric(substr(Periodo, 1, 4)),
-    Trimestre = as.numeric(substr(Periodo, 7, 7)),
+    Trimestre = paste0("Q", as.numeric(substr(Periodo, 7, 7))),  # Agregar "Q" aquí
     Indice = as.numeric(Indice)
   ) %>%
   filter(Sector == "TOTAL INDUSTRY AND SERVICES (b to n)") %>%
@@ -131,7 +131,7 @@ revenue_vs_expenditure <- economic_data %>%
   filter(DATA_TYPE_AGGR %in% c("OTR_C_W0", "OTE_D_W0")) %>%
   mutate(
     Año = as.numeric(substr(TIME_PERIOD, 1, 4)),
-    Trimestre = as.numeric(substr(TIME_PERIOD, 7, 7)),
+    Trimestre = paste0("Q", as.numeric(substr(TIME_PERIOD, 7, 7))),  # Agregar "Q" aquí
     Value = as.numeric(Observation) * 10^6  # Convertir a millones
   ) %>%
   select(Año, Trimestre, Aggregate, Value) %>%
