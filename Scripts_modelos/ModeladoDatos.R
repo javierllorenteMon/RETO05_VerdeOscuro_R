@@ -145,3 +145,65 @@ SMI_est <- diff(SMI_sinO, differences = 1)
 tsdisplay(SMI_est)
 test_estacionariedad(SMI_est, nombre = "SMI")
 
+# Modelado
+
+# PIB
+# Train(2000,1)(2021,2) test(2021,2)(2022,2)
+train_PIB <- window(PIB_est, start = c(2000, 1), end = c(2021, 1))
+test_PIB <- window(PIB_est, start = c(2021, 2), end = c(2022, 2))
+
+# auto.arima
+modelo_PIB_autoArima <- auto.arima(train_PIB, seasonal = FALSE)
+summary(modelo_PIB_autoArima)
+checkresiduals(modelo_PIB_autoArima)
+
+pred_PIB_autoArima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
+
+accuracy_PIB_autoArima <- accuracy(pred_PIB_autoArima, test_PIB)
+
+# SARIMA
+modelo_PIB_sarima <- auto.arima(train_PIB, seasonal = FALSE)
+summary(modelo_PIB_sarima)
+checkresiduals(modelo_PIB_sarima)
+
+pred_PIB_sarima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
+
+accuracy_PIB_sarima <- accuracy(pred_PIB_sarima, test_PIB)
+
+
+
+
+
+#IPC
+#Train(2000,1)(2021,2) test(2021,2)(2022,2)
+train_IPC <- window(IPC_est, start = c(2000, 1), end = c(2021, 1))
+test_IPC <- window(IPC_est, start = c(2021, 2), end = c(2022, 2))
+
+# auto.arima 
+fit_IPC <- auto.arima(train_IPC, seasonal = FALSE)
+checkresiduals(fit_IPC)                # ya pasa
+fc_IPC  <- forecast(fit_IPC, h = length(test_IPC))
+accuracy(fc_IPC, test_IPC)[, c("RMSE","MAE")]
+
+# Modelo SARIMA (ya lo tienes)
+fit_IPC_s <- auto.arima(train_IPC, seasonal = TRUE,
+                        stepwise = TRUE, approximation = FALSE)
+checkresiduals(fit_IPC_s)   # p-value > 0.05 = OK
+
+# Pronóstico y métricas en TEST
+fc_IPC_s <- forecast(fit_IPC_s, h = length(test_IPC))
+acc_s    <- accuracy(fc_IPC_s, test_IPC)
+
+# Extraer AICc SIN la función AICc()
+aicc_s   <- fit_IPC_s$aicc
+
+# Resumen limpio
+cat(paste(capture.output(fit_IPC_s), collapse = "\n"), "\n")
+cat("AICc:", aicc_s, "\n")
+cat("RMSE test:", acc_s["Test set","RMSE"], " | MAE test:", acc_s["Test set","MAE"], "\n")
+
+# CONCLUSIONES
+# Para IPC (serie transformada IPC_est), el modelo no estacional ARIMA(1,0,0) presenta residuos tipo 
+# ruido blanco (Ljung–Box p=0.264) y mejores errores en test (RMSE=0.712; MAE=0.540) que el modelo 
+# estacional ARIMA(3,0,0)(0,0,1)[4] (RMSE=0.819; MAE=0.770), aunque este último mejora el AICc en 
+# entrenamiento. Por tanto, seleccionamos ARIMA(1,0,0) como modelo final en esta fase.
