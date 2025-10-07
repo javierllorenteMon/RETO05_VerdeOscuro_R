@@ -153,5 +153,10 @@ train_PIB <- window(PIB_est, start = c(2000, 1), end = c(2021, 1))
 test_PIB <- window(PIB_est, start = c(2021, 2), end = c(2022, 2))
 
 # auto.arima
-fit_PIB <- auto.arima(PIB_est, seasonal = FALSE)
+fit_PIB <- auto.arima(train_PIB, seasonal = FALSE)
+summary(fit_PIB)
+checkresiduals(fit_PIB)
 
+pred_PIB <- forecast(fit_PIB, h = length(test_PIB))
+
+accuracy_PIB <- accuracy(pred_PIB, test_PIB)
