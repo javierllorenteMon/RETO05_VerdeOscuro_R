@@ -213,4 +213,3 @@ grafico_pred <- ggplot(df_pred, aes(x = Fecha)) +
 
 print(grafico_pred)
 
-
