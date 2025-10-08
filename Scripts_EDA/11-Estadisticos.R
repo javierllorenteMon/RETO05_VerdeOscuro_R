@@ -410,12 +410,12 @@ print(resumen_anual)
 cat("\n=== GUARDANDO RESULTADOS ===\n")
 
 # Dataframe completo
-#write.csv(italia_trimestral, "Datos/italia_trimestral_completo_definitivo.csv", 
-          #row.names = FALSE, fileEncoding = "UTF-8")
+write.csv(italia_trimestral, "Datos/italia_trimestral_completo_definitivo.csv", 
+          row.names = FALSE, fileEncoding = "UTF-8")
 cat("✓ Dataframe completo guardado: Datos/italia_trimestral_completo_definitivo.csv\n")
 
 # Resumen estadístico
-#write.csv(describe(variables_numericas), "Datos/resumen_estadistico_italia.csv", 
-          #row.names = TRUE, fileEncoding = "UTF-8")
+write.csv(describe(variables_numericas), "Datos/resumen_estadistico_italia.csv", 
+          row.names = TRUE, fileEncoding = "UTF-8")
 cat("✓ Resumen estadístico guardado: Datos/resumen_estadistico_italia.csv\n")
 
