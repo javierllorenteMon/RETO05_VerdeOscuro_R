@@ -288,8 +288,8 @@ confianza_consumidor_trimestral <- confianza_consumidor %>%
   ) %>%
   arrange(año, trimestre)
 
-#write_csv(confianza_consumidor, "confianza_consumidor_mensual_italia_1999_2022.csv")
-#write_csv(confianza_consumidor_trimestral, "confianza_consumidor_trimestral_italia_1999_2022.csv")
+write_csv(confianza_consumidor, "confianza_consumidor_mensual_italia_1999_2022.csv")
+write_csv(confianza_consumidor_trimestral, "confianza_consumidor_trimestral_italia_1999_2022.csv")
 
 
 
@@ -324,7 +324,7 @@ precios_vivienda_italia <- datos_vivienda %>%
   select(año, trimestre, indice_precios) %>%
   arrange(año, trimestre)
 
-#write_csv(precios_vivienda_italia, "precios_vivienda_italia.csv")
+write_csv(precios_vivienda_italia, "precios_vivienda_italia.csv")
 
 
 ################################################################################
@@ -355,7 +355,7 @@ tasa_crecimiento_trimestral <- datos_vivienda %>%
   select(año, trimestre, tasa_crecimiento_trimestral) %>%
   arrange(año, trimestre)
 
-#write_csv(tasa_crecimiento_trimestral, "tasa_crecimiento_trimestral_precios_vivienda_italia.csv")
+write_csv(tasa_crecimiento_trimestral, "tasa_crecimiento_trimestral_precios_vivienda_italia.csv")
 
 
 
