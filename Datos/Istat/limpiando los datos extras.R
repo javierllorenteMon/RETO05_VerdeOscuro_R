@@ -232,3 +232,135 @@ print(str(comercio_exterior))
 
 # Guardar como un solo CSV
 write.csv(comercio_exterior, "Datos/comercio_exterior_unificado.csv")
+
+
+################################################################################
+################################################################################
+######################## "Confianza del Consumidor - Italia" ###################
+################################################################################
+################################################################################
+
+# Mide el grado de optimismo/pesimismo de los consumidores sobre la situación económica
+# Base: Balance entre respuestas positivas y negativas (escala -100 a +100)
+# Metodología: Encuestas a hogares sobre expectativas económicas y situación personal
+# Cobertura: Toda Italia - Datos mensuales desde 1980
+# Interpretación: 
+#   - Valores POSITIVOS: Optimismo sobre la economía
+#   - Valores NEGATIVOS: Pesimismo sobre la economía  
+#   - Cero: Neutralidad
+
+datos <- read_delim("Datos/Istat/confianza_consumidor.txt", delim = "\t")
+
+confianza_consumidor <- datos %>%
+  separate(col = 1, into = c("freq", "indic", "s_adj", "geo"), sep = ",") %>%
+  filter(geo == "IT") %>%  # Filtrar solo Italia
+  select(-freq, -indic, -s_adj, -geo) %>%  # Eliminar columnas innecesarias
+  pivot_longer(
+    cols = everything(),
+    names_to = "periodo",
+    values_to = "indice_confianza"
+  ) %>%
+  mutate(
+    periodo = gsub("X", "", periodo),  # Remover "X" del nombre
+    año = as.numeric(substr(periodo, 1, 4)),
+    mes = as.numeric(substr(periodo, 6, 7)),
+    fecha = as.Date(paste(año, mes, "01", sep = "-")),
+    indice_confianza = as.numeric(indice_confianza)
+  ) %>%
+  filter(!is.na(indice_confianza)) %>%
+  filter(año >= 1999 & año <= 2022) %>%
+  select(fecha, año, mes, indice_confianza) %>%
+  arrange(fecha)
+
+confianza_consumidor_trimestral <- confianza_consumidor %>%
+  mutate(
+    trimestre = case_when(
+      mes %in% 1:3 ~ "Q1",
+      mes %in% 4:6 ~ "Q2",
+      mes %in% 7:9 ~ "Q3",
+      mes %in% 10:12 ~ "Q4"
+    )
+  ) %>%
+  group_by(año, trimestre) %>%
+  summarise(
+    indice_confianza = mean(indice_confianza, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(año, trimestre)
+
+#write_csv(confianza_consumidor, "confianza_consumidor_mensual_italia_1999_2022.csv")
+#write_csv(confianza_consumidor_trimestral, "confianza_consumidor_trimestral_italia_1999_2022.csv")
+
+
+
+################################################################################
+################################################################################
+############# "Índice Trimestral de Precios de Vivienda - Italia" #############
+################################################################################
+################################################################################
+# Incluye TODOS los tipos de vivienda (nueva y existente) en Italia
+# Base 2015 = 100 - Índice armonizado Eurostat
+# Cobertura: Toda Italia - Datos desde 2010
+# Metodología: Precios de transacción de compraventa de viviendas
+
+datos_vivienda <- read_delim("Datos/Istat/precios_vivienda.txt", delim = "\t")
+
+precios_vivienda_italia <- datos_vivienda %>%
+  filter(grepl("IT", `freq,expend,unit,geo\\TIME_PERIOD`)) %>%
+  filter(grepl("DW_ACQ,I15_Q,IT", `freq,expend,unit,geo\\TIME_PERIOD`)) %>%
+  select(-`freq,expend,unit,geo\\TIME_PERIOD`) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "periodo",
+    values_to = "indice_precios"
+  ) %>%
+  mutate(
+    periodo = gsub("X", "", periodo),  # Remover "X" del nombre si existe
+    año = as.numeric(substr(periodo, 1, 4)),
+    trimestre = paste0("Q", as.numeric(substr(periodo, 7, 7))),
+    indice_precios = as.numeric(indice_precios)
+  ) %>%
+  filter(!is.na(indice_precios)) %>%
+  select(año, trimestre, indice_precios) %>%
+  arrange(año, trimestre)
+
+#write_csv(precios_vivienda_italia, "precios_vivienda_italia.csv")
+
+
+################################################################################
+################################################################################
+####### "Tasa de Crecimiento Trimestral de Precios de Vivienda - Italia" #######
+################################################################################
+################################################################################
+# Mide la variación trimestral de los precios de vivienda
+# Base: Porcentaje - Comparación con trimestre anterior
+# Indicador más sensible a cambios recientes en el mercado
+
+tasa_crecimiento_trimestral <- datos_vivienda %>%
+  filter(grepl("IT", `freq,expend,unit,geo\\TIME_PERIOD`)) %>%
+  filter(grepl("DW_ACQ,RCH_Q,IT", `freq,expend,unit,geo\\TIME_PERIOD`)) %>%
+  select(-`freq,expend,unit,geo\\TIME_PERIOD`) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "periodo",
+    values_to = "tasa_crecimiento_trimestral"
+  ) %>%
+  mutate(
+    periodo = gsub("X", "", periodo),
+    año = as.numeric(substr(periodo, 1, 4)),
+    trimestre = paste0("Q", as.numeric(substr(periodo, 7, 7))),
+    tasa_crecimiento_trimestral = as.numeric(tasa_crecimiento_trimestral)
+  ) %>%
+  filter(!is.na(tasa_crecimiento_trimestral)) %>%
+  select(año, trimestre, tasa_crecimiento_trimestral) %>%
+  arrange(año, trimestre)
+
+#write_csv(tasa_crecimiento_trimestral, "tasa_crecimiento_trimestral_precios_vivienda_italia.csv")
+
+
+
+
+
+
+
+
