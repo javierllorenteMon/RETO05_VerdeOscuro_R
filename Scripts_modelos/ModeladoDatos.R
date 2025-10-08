@@ -10,6 +10,7 @@ library(forecast)
 library(ggplot2)
 library(fpp2)
 library(tseries)
+library(gridExtra)
 
 # Cargar ficheros
 PIB_sinO <- readRDS("Datos/transformados/PIB_sinO.rds")
@@ -152,58 +153,64 @@ test_estacionariedad(SMI_est, nombre = "SMI")
 train_PIB <- window(PIB_est, start = c(2000, 1), end = c(2021, 1))
 test_PIB <- window(PIB_est, start = c(2021, 2), end = c(2022, 2))
 
-# auto.arima
-modelo_PIB_autoArima <- auto.arima(train_PIB, seasonal = FALSE)
-summary(modelo_PIB_autoArima)
-checkresiduals(modelo_PIB_autoArima)
+# ARIMA
+modelo_PIB_Arima <- auto.arima(train_PIB, seasonal = FALSE)
+summary(modelo_PIB_Arima)
+checkresiduals(modelo_PIB_Arima)
 
-pred_PIB_autoArima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
+pred_PIB_Arima <- forecast(modelo_PIB_Arima, h = length(test_PIB))
 
-accuracy_PIB_autoArima <- accuracy(pred_PIB_autoArima, test_PIB)
+accuracy_PIB_Arima <- accuracy(pred_PIB_Arima, test_PIB)
 
 # SARIMA
-modelo_PIB_sarima <- auto.arima(train_PIB, seasonal = FALSE)
+modelo_PIB_sarima <- auto.arima(train_PIB, seasonal = TRUE)
 summary(modelo_PIB_sarima)
 checkresiduals(modelo_PIB_sarima)
 
-pred_PIB_sarima <- forecast(modelo_PIB_autoArima, h = length(test_PIB))
+pred_PIB_sarima <- forecast(modelo_PIB_sarima, h = length(test_PIB))
 
 accuracy_PIB_sarima <- accuracy(pred_PIB_sarima, test_PIB)
 
+# Interpretar accuracys
+
+# Crear tabla resumen de métricas principales
+comparacion_PIB <- data.frame(
+  Modelo = c("ARIMA", "SARIMA"),
+  RMSE = c(accuracy_PIB_Arima["Test set", "RMSE"],
+           accuracy_PIB_sarima["Test set", "RMSE"]),
+  MAE = c(accuracy_PIB_Arima["Test set", "MAE"],
+          accuracy_PIB_sarima["Test set", "MAE"]),
+  MAPE = c(accuracy_PIB_Arima["Test set", "MAPE"],
+           accuracy_PIB_sarima["Test set", "MAPE"]),
+  TheilsU = c(accuracy_PIB_Arima["Test set", "Theil's U"],
+              accuracy_PIB_sarima["Test set", "Theil's U"])
+)
+
+print(comparacion_PIB)
+
+# --- Gráfico de comparación de predicciones ---
+# Convertir a data.frame
+df_pred <- data.frame(
+  Fecha = time(test_PIB),
+  Real = as.numeric(test_PIB),
+  ARIMA = as.numeric(pred_PIB_Arima$mean),
+  SARIMA = as.numeric(pred_PIB_sarima$mean)
+)
+
+# Graficar valores reales y predicciones
+grafico_pred <- ggplot(df_pred, aes(x = Fecha)) +
+  geom_line(aes(y = Real, color = "Real"), linewidth = 1.2) +
+  geom_line(aes(y = ARIMA, color = "ARIMA"), linetype = "dashed", size = 1) +
+  geom_line(aes(y = SARIMA, color = "SARIMA"), linetype = "dotdash", size = 1) +
+  labs(
+    title = "Comparación de modelos ARIMA vs SARIMA - PIB (Test Set)",
+    x = "Año",
+    y = "PIB (diferenciado/transformado)",
+    color = "Serie"
+  ) +
+  scale_color_manual(values = c("Real" = "black", "ARIMA" = "blue", "SARIMA" = "red")) +
+  theme_minimal()
+
+print(grafico_pred)
 
 
-
-
-#IPC
-#Train(2000,1)(2021,2) test(2021,2)(2022,2)
-train_IPC <- window(IPC_est, start = c(2000, 1), end = c(2021, 1))
-test_IPC <- window(IPC_est, start = c(2021, 2), end = c(2022, 2))
-
-# auto.arima 
-fit_IPC <- auto.arima(train_IPC, seasonal = FALSE)
-checkresiduals(fit_IPC)                # ya pasa
-fc_IPC  <- forecast(fit_IPC, h = length(test_IPC))
-accuracy(fc_IPC, test_IPC)[, c("RMSE","MAE")]
-
-# Modelo SARIMA (ya lo tienes)
-fit_IPC_s <- auto.arima(train_IPC, seasonal = TRUE,
-                        stepwise = TRUE, approximation = FALSE)
-checkresiduals(fit_IPC_s)   # p-value > 0.05 = OK
-
-# Pronóstico y métricas en TEST
-fc_IPC_s <- forecast(fit_IPC_s, h = length(test_IPC))
-acc_s    <- accuracy(fc_IPC_s, test_IPC)
-
-# Extraer AICc SIN la función AICc()
-aicc_s   <- fit_IPC_s$aicc
-
-# Resumen limpio
-cat(paste(capture.output(fit_IPC_s), collapse = "\n"), "\n")
-cat("AICc:", aicc_s, "\n")
-cat("RMSE test:", acc_s["Test set","RMSE"], " | MAE test:", acc_s["Test set","MAE"], "\n")
-
-# CONCLUSIONES
-# Para IPC (serie transformada IPC_est), el modelo no estacional ARIMA(1,0,0) presenta residuos tipo 
-# ruido blanco (Ljung–Box p=0.264) y mejores errores en test (RMSE=0.712; MAE=0.540) que el modelo 
-# estacional ARIMA(3,0,0)(0,0,1)[4] (RMSE=0.819; MAE=0.770), aunque este último mejora el AICc en 
-# entrenamiento. Por tanto, seleccionamos ARIMA(1,0,0) como modelo final en esta fase.
