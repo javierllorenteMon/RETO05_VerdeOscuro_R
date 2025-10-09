@@ -360,7 +360,52 @@ tasa_crecimiento_trimestral <- datos_vivienda %>%
 
 
 
+################################################################################
+################################################################################
+################ "Tipos de Interés Largo Plazo - BTP 10 años Italia" ###########
+################################################################################
+################################################################################
+# Rendimiento del Bono del Tesoro Italiano a 10 años (BTP Decennale)
+# Benchmark principal para tipos de interés largo plazo en Italia
+# Base: Porcentaje anual - Datos mensuales desde 1993
+# Fuente: Banca d'Italia - Rendimento lordo BTP decennale benchmark
+# Interpretación:
+#   - Valores ALTOS: Mayor costo financiero, política restrictiva
+#   - Valores BAJOS: Menor costo financiero, política expansiva
 
+tipos_interes <- read_delim("Datos/Istat/Rendimento lordo BTP decennale benchmark.csv", 
+                            delim = ";", 
+                            locale = locale(decimal_mark = ","))
+tipos_interes_italia <- tipos_interes %>%
+  clean_names() %>%
+  rename(fecha = `Data dell'osservazione`,
+         tipo_interes_10y = `Rendimento lordo BTP decennale benchmark`) %>%
+  mutate(
+    fecha = as.Date(fecha, format = "%Y-%m-%d"),
+    año = as.numeric(format(fecha, "%Y")),
+    mes = as.numeric(format(fecha, "%m")),
+    tipo_interes_10y = as.numeric(tipo_interes_10y)
+  ) %>%
+  filter(!is.na(tipo_interes_10y)) %>%
+  select(fecha, año, mes, tipo_interes_10y) %>%
+  arrange(fecha)
 
+# Convertir a frecuencia trimestral (promedio mensual por trimestre)
+tipos_interes_trimestral <- tipos_interes_italia %>%
+  mutate(
+    trimestre = case_when(
+      mes %in% 1:3 ~ "Q1",
+      mes %in% 4:6 ~ "Q2", 
+      mes %in% 7:9 ~ "Q3",
+      mes %in% 10:12 ~ "Q4"
+    )
+  ) %>%
+  group_by(año, trimestre) %>%
+  summarise(
+    tipo_interes_10y = mean(tipo_interes_10y, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(año, trimestre)
 
-
+write_csv(tipos_interes_italia, "tipos_interes_largo_plazo_mensual_italia.csv")
+write_csv(tipos_interes_trimestral, "tipos_interes_largo_plazo_trimestral_italia.csv")
