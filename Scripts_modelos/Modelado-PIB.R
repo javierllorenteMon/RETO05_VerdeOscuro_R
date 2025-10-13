@@ -52,11 +52,17 @@ checkresiduals(modelo_PIB_Arima)
 
 pred_PIB_Arima <- forecast(modelo_PIB_Arima, h = length(test_PIB))
 
-# Recuperar el último valor conocido del log(PIB)
-ultimo_valor <- as.numeric(log(tail(train_PIB, 2))) # 2 porque se han aplicado 2 diferencias
+# Revertir las diferencias con diffinv
+pred_PIB_log_A <- diffinv(pred_PIB_Arima$mean, 
+                          differences = 2, 
+                          xi = log(tail(train_PIB, 2)))
 
-# Revertir la diferencia (cumsum = acumulado)
-pred_PIB_revert_A <- exp(cumsum(as.numeric(pred_PIB_Arima$mean)) + ultimo_valor)
+# Convertir de log a nivel original
+pred_PIB_revert_A <- exp(pred_PIB_log_A)
+
+# (Opcional) eliminar los dos primeros valores que son parte de xi
+pred_PIB_revert_A <- pred_PIB_revert_A[-c(1:2)]
+
 
 # Comparar con el test real
 accuracy_PIB_Arima <- accuracy(pred_PIB_revert_A, test_PIB)
@@ -69,8 +75,16 @@ checkresiduals(modelo_PIB_sarima)
 
 pred_PIB_sarima <- forecast(modelo_PIB_sarima, h = length(test_PIB))
 
-# Revertir la diferencia (cumsum = acumulado)
-pred_PIB_revert_S <- exp(cumsum(as.numeric(pred_PIB_sarima$mean)) + ultimo_valor)
+# Revertir con diffinv
+pred_PIB_log_S <- diffinv(pred_PIB_sarima$mean, 
+                          differences = 2, 
+                          xi = log(tail(train_PIB, 2)))
+
+# Convertir de log a nivel original
+pred_PIB_revert_S <- exp(pred_PIB_log_S)
+
+# Eliminar los dos primeros valores iniciales
+pred_PIB_revert_S <- pred_PIB_revert_S[-c(1:2)]
 
 # Comparar con el test real
 accuracy_PIB_sarima <- accuracy(pred_PIB_revert_S, test_PIB)
