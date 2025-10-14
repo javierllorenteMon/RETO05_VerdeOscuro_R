@@ -21,8 +21,8 @@ decomPIB <- decompose(PIB_sinO)
 autoplot(decomPIB)
 
 # Train(2000,1)(2021,2) test(2021,2)(2022,2)
-train_PIB <- window(PIB_sinO, start = c(2000, 1), end = c(2021, 1))
-test_PIB <- window(PIB_sinO, start = c(2021, 2), end = c(2022, 3))
+train_PIB <- window(PIB_sinO, start = c(2000, 1), end = c(2021, 2))
+test_PIB <- window(PIB_sinO, start = c(2021, 3), end = c(2022, 3))
 
 # Comprobar estacionariedad con los test (seguramente sea no estacionaria porque no la hemos hecho estacionaria todavía)
 test_estacionariedad(train_PIB, nombre = "PIB")
@@ -46,7 +46,26 @@ test_estacionariedad(train_PIB_est, nombre = "PIB")
 # Modelos
 
 # ------ ARIMA (auto.arima con seasonal = FALSE) ------
-modelo_PIB_Arima <- auto.arima(train_PIB_est, seasonal = FALSE)
+modelo_PIB_AutoArima <- auto.arima(log(train_PIB), seasonal = FALSE)
+summary(modelo_PIB_AutoArima)
+checkresiduals(modelo_PIB_AutoArima)
+
+pred_PIB_AutoArima <- forecast(modelo_PIB_AutoArima, h = length(test_PIB))
+
+# Convertir de log a nivel original
+pred_PIB_revert_AA <- exp(pred_PIB_AutoArima$mean)
+
+# Comparar con el test real
+accuracy_PIB_AutoArima <- accuracy(pred_PIB_revert_AA, test_PIB)
+accuracy_PIB_AutoArima
+
+
+# ------ ARIMA (manual) ------
+
+# elegir p, d , q
+acf(train_PIB_est)
+
+modelo_PIB_Arima <- arima(train_PIB_est, order = c(0, 0, 2))
 summary(modelo_PIB_Arima)
 checkresiduals(modelo_PIB_Arima)
 
@@ -89,6 +108,7 @@ pred_PIB_revert_S <- pred_PIB_revert_S[-c(1:2)]
 # Comparar con el test real
 accuracy_PIB_sarima <- accuracy(pred_PIB_revert_S, test_PIB)
 accuracy_PIB_sarima
+
 
 # ------ Modelos Naive y SNaive ------
 pred_naive <- naive(train_PIB, h = length(test_PIB))
@@ -141,7 +161,6 @@ plot_modelos <- ggplot() +
   geom_line(data = df_snaive, aes(x = Trimestre, y = Pred), color = 'orange', linetype = 'dotted', size = 1.1) +
   labs(title = 'Pronóstico PIB: ARIMA, SARIMA, Naive y SNaive vs Real', y = 'PIB', x = 'Trimestre') +
   theme_minimal()
-
 
 plot_modelos
 
