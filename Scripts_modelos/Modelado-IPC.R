@@ -10,10 +10,11 @@ library(forecast)
 library(ggplot2)
 library(fpp2)
 library(tseries)
+library(tidyr)
 #source("Scripts_preprocesamiento/Funciones.R")
 
 # --- Datos SOLO IPC ---
-IPC_sinO <- readRDS("Datos/transformados/IPC_sinO.rds")
+IPC_sinO <- readRDS("Datos/transformados/IPC_sinO_M.rds")
 s <- frequency(IPC_sinO)
 
 # ============================================================
@@ -41,7 +42,7 @@ transform_with <- function(y, use_log, s, D, d) {
   z
 }
 
-# 3) Aplicar transformaciones a TODA la serie y volver a partir
+# 3) Aplicar transformaciones a TODA la serie y volver a partir (estacionaria)
 IPC_est_all <- transform_with(IPC_sinO, use_log_IPC, s, D_IPC, d_IPC)
 offset <- D_IPC * s + d_IPC
 time_est <- time(IPC_sinO)[(offset + 1):length(IPC_sinO)]
@@ -127,6 +128,12 @@ autoplot(window(IPC_sinO, start = c(2019, 1))) +
   labs(title = "IPC (escala original): forecast con log->exp",
        x = "Año", y = "IPC (original)") +
   theme_minimal(base_size = 12)
+
+c(
+  no_estacional = Box.test(residuals(fit_IPC_ns),  type="Ljung-Box", lag=8)$p.value,
+  SARIMA        = Box.test(residuals(fit_IPC_s),   type="Ljung-Box", lag=8)$p.value,
+  ARIMA100      = Box.test(residuals(fit_IPC_arima), type="Ljung-Box", lag=8)$p.value
+)
 
 
 # ===============================================================

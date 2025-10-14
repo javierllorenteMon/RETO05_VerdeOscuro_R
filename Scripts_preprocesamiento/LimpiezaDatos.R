@@ -81,6 +81,12 @@ MS_TS <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end =
 UR_TS <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 SMI_TS <- ts(SMI_ITA$SMI_t, start = c(min(SMI_ITA$Year), min(SMI_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 
+# Convertir a series temporales trimestrales
+IPC_TS_M <- ts(ipc_ITA$IPC_t, start = c(min(ipc_ITA$Year), min(ipc_ITA$Quarter)), end = c(2022, 9), frequency = 12)
+MS_TS_M <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end = c(2022, 9), frequency = 12)
+UR_TS_M <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 9), frequency = 12)
+SMI_TS_M <- ts(SMI_ITA$SMI_t, start = c(min(SMI_ITA$Year), min(SMI_ITA$Quarter)), end = c(2022, 9), frequency = 12)
+
 # Analizar series temporales
 class(PIB_TS)
 time(PIB_TS)
@@ -150,6 +156,23 @@ UR_sinO <- tsclean(UR_TS)
 outliers_SMI <- tsoutliers(SMI_TS)
 outliers_SMI 
 SMI_sinO <- tsclean(SMI_TS)
+
+# OUTLIERS MENSUALES PARA IPC
+outliers_IPC_M <- tsoutliers(IPC_TS_M)
+outliers_IPC_M
+IPC_sinO_M <- tsclean(IPC_TS_M)
+
+outliers_MS <- tsoutliers(MS_TS_M)
+outliers_MS
+MS_sinO_M <- tsclean(MS_TS_M)
+
+outliers_UR_M <- tsoutliers(UR_TS_M)
+outliers_UR_M
+UR_sinO_M <- tsclean(UR_TS_M)
+
+outliers_SMI_M <- tsoutliers(SMI_TS_M)
+outliers_SMI_M 
+SMI_sinO_M <- tsclean(SMI_TS_M)
 
 # Graficar para comparar las series temporales con y sin outliers
 
@@ -229,6 +252,12 @@ saveRDS(IPC_sinO, "Datos/transformados/IPC_sinO.rds")
 saveRDS(MS_sinO, "Datos/transformados/MS_sinO.rds")
 saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
 saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")
+
+saveRDS(IPC_sinO_M, "Datos/transformados/IPC_sinO_M.rds")
+saveRDS(MS_sinO_M, "Datos/transformados/MS_sinO_M.rds")
+saveRDS(UR_sinO_M, "Datos/transformados/UR_sinO_M.rds")
+saveRDS(SMI_sinO_M, "Datos/transformados/SMI_sinO_M.rds")
+
 
 # Guardar graficos
 ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", grafico_outliers_PIB)
