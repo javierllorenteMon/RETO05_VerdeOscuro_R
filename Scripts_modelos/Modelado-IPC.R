@@ -1,6 +1,6 @@
 ### RETO 05, VERDE OSCURO, LABORAL KUTXA ###
 
-####### MODELADO DE DATOS IPC
+####### MODELADO DEL IPC (mensual)
 
 # Cargar librerias
 library(dplyr)
@@ -10,174 +10,257 @@ library(forecast)
 library(ggplot2)
 library(fpp2)
 library(tseries)
-library(tidyr)
-#source("Scripts_preprocesamiento/Funciones.R")
+library(gridExtra)
+source("Scripts_Preprocesamiento/Funciones.R")
 
-# --- Datos SOLO IPC ---
+# Cargar fichero (ts mensual con frequency = 12)
 IPC_sinO <- readRDS("Datos/transformados/IPC_sinO_M.rds")
-s <- frequency(IPC_sinO)
+stopifnot(frequency(IPC_sinO) == 12)
 
-# ============================================================
-# A) FLUJO CLÁSICO (TRABAJO EN SERIE TRANSFORMADA)
-# ============================================================
+# Descomposición de componentes
+decomIPC <- decompose(IPC_sinO)
+autoplot(decomIPC)
 
-# 1) Split en serie ORIGINAL (sin transformar)
-raw_train_IPC <- window(IPC_sinO, start = c(2000, 1), end = c(2021, 1))
-raw_test_IPC  <- window(IPC_sinO, start = c(2021, 2), end = c(2022, 2))
-h <- length(raw_test_IPC)
+# Train(2000,1)(2021,12)  Test(2022,1)(2022,9)
+train_IPC <- window(IPC_sinO, start = c(2000, 1), end = c(2021, 12))
+test_IPC  <- window(IPC_sinO, start = c(2022, 1), end = c(2022, 9))
 
-# 2) Elegir transformaciones SOLO con TRAIN (log / D / d)
-use_log_IPC <- FALSE  # IPC no suele requerir log (varianza bastante estable)
+# Comprobar estacionariedad (seguramente no estacionaria)
+test_estacionariedad(train_IPC, nombre = "IPC")
 
-y_tr <- if (use_log_IPC) log(raw_train_IPC) else raw_train_IPC
-D_IPC <- if (s > 1) nsdiffs(y_tr) else 0
-y_tr_s <- if (D_IPC > 0) diff(y_tr, lag = s, differences = D_IPC) else y_tr
-d_IPC <- ndiffs(y_tr_s)
+# Comprobar si tiene varianza creciente para ver si aplicarle log
+ts.plot(train_IPC)  # si parece tener varianza creciente, aplicamos log
 
-# Helper para aplicar SIEMPRE las mismas transformaciones
-transform_with <- function(y, use_log, s, D, d) {
-  z <- if (use_log) log(y) else y
-  if (D > 0) z <- diff(z, lag = s, differences = D)
-  if (d > 0) z <- diff(z, differences = d)
-  z
+# Estacionalidad (mensual, m=12): nsdiffs y ACF
+nsdiffs(train_IPC)  # si devuelve 1, hay estacionalidad
+acf(train_IPC)      # si hay picos en múltiplos de 12, sugiere estacionalidad
+
+# Test de estacionariedad otra vez (ajustando la serie)
+tsdisplay(train_IPC)
+# Igual que tu compi: diferenciamos en log 2 veces (sin estacional explícita)
+# (Si quisieras incluir estacionalidad: diff(diff(log(train_IPC)), lag = 12))
+train_IPC_est <- diff(log(train_IPC), differences = 2)
+tsdisplay(train_IPC_est)
+test_estacionariedad(train_IPC_est, nombre = "IPC")
+
+# =================== Modelos ===================
+
+# ------ ARIMA (auto.arima con seasonal = FALSE) ------
+modelo_IPC_Arima <- auto.arima(train_IPC_est, seasonal = FALSE)
+summary(modelo_IPC_Arima)
+checkresiduals(modelo_IPC_Arima)
+
+pred_IPC_Arima <- forecast(modelo_IPC_Arima, h = length(test_IPC))
+
+# Revertir las diferencias con diffinv (dos diferencias no estacionales)
+pred_IPC_log_A <- diffinv(pred_IPC_Arima$mean,
+                          differences = 2,
+                          xi = log(tail(train_IPC, 2)))
+
+# Volver de log a nivel original
+pred_IPC_revert_A <- exp(pred_IPC_log_A)
+
+# Eliminar los dos primeros valores (semillas de xi)
+pred_IPC_revert_A <- pred_IPC_revert_A[-c(1:2)]
+
+# Comparar con el test real
+accuracy_IPC_Arima <- accuracy(pred_IPC_revert_A, test_IPC)
+accuracy_IPC_Arima
+
+# ------ SARIMA (auto.arima con seasonal = TRUE) ------
+modelo_IPC_sarima <- auto.arima(train_IPC_est, seasonal = TRUE)
+summary(modelo_IPC_sarima)
+checkresiduals(modelo_IPC_sarima)
+
+pred_IPC_sarima <- forecast(modelo_IPC_sarima, h = length(test_IPC))
+
+# Revertir con diffinv
+pred_IPC_log_S <- diffinv(pred_IPC_sarima$mean,
+                          differences = 2,
+                          xi = log(tail(train_IPC, 2)))
+
+# Convertir de log a nivel original
+pred_IPC_revert_S <- exp(pred_IPC_log_S)
+
+# Eliminar los dos valores iniciales
+pred_IPC_revert_S <- pred_IPC_revert_S[-c(1:2)]
+
+# Comparar con el test real
+accuracy_IPC_sarima <- accuracy(pred_IPC_revert_S, test_IPC)
+accuracy_IPC_sarima
+
+# ------ Modelos Naive y SNaive ------
+pred_naive  <- naive(train_IPC,  h = length(test_IPC))
+pred_snaive <- snaive(train_IPC, h = length(test_IPC))  # estacional (m=12)
+
+accuracy_naive  <- accuracy(pred_naive$mean,  test_IPC)
+accuracy_snaive <- accuracy(pred_snaive$mean, test_IPC)
+
+# =================== Gráficos e interpretación ===================
+
+# Data frames para graficar
+Meses <- time(test_IPC)
+df_test         <- data.frame(Mes = Meses, IPC = as.numeric(test_IPC))
+df_pred_arima   <- data.frame(Mes = Meses, Pred = as.numeric(pred_IPC_revert_A))
+df_pred_sarima  <- data.frame(Mes = Meses, Pred = as.numeric(pred_IPC_revert_S))
+df_naive        <- data.frame(Mes = Meses, Pred = as.numeric(pred_naive$mean))
+df_snaive       <- data.frame(Mes = Meses, Pred = as.numeric(pred_snaive$mean))
+
+# ARIMA vs Real
+plot_arima <- ggplot() +
+  geom_line(data = df_test, aes(x = Mes, y = IPC), color = 'blue', size = 1.1) +
+  geom_line(data = df_pred_arima, aes(x = Mes, y = Pred), color = 'red', linetype = 'dashed', size = 1.1) +
+  labs(title = 'Pronóstico ARIMA vs IPC real', y = 'IPC', x = 'Mes') +
+  theme_minimal()
+
+# SARIMA vs Real
+plot_sarima <- ggplot() +
+  geom_line(data = df_test, aes(x = Mes, y = IPC), color = 'blue', size = 1.1) +
+  geom_line(data = df_pred_sarima, aes(x = Mes, y = Pred), color = 'green', linetype = 'dashed', size = 1.1) +
+  labs(title = 'Pronóstico SARIMA vs IPC real', y = 'IPC', x = 'Mes') +
+  theme_minimal()
+
+# Mostrar ambos gráficos
+grid.arrange(plot_arima, plot_sarima, ncol = 1)
+
+# Todos los modelos juntos
+plot_modelos <- ggplot() +
+  geom_line(data = df_test, aes(x = Mes, y = IPC), color = 'blue', size = 1.1) +
+  geom_line(data = df_pred_arima,  aes(x = Mes, y = Pred), color = 'red',    linetype = 'dashed', size = 1.1) +
+  geom_line(data = df_pred_sarima, aes(x = Mes, y = Pred), color = 'green',  linetype = 'dashed', size = 1.1) +
+  geom_line(data = df_naive,       aes(x = Mes, y = Pred), color = 'purple', linetype = 'dotted', size = 1.1) +
+  geom_line(data = df_snaive,      aes(x = Mes, y = Pred), color = 'orange', linetype = 'dotted', size = 1.1) +
+  labs(title = 'Pronóstico IPC: ARIMA, SARIMA, Naive y SNaive vs Real', y = 'IPC', x = 'Mes') +
+  theme_minimal()
+
+plot_modelos
+
+## =================== PREDICCIÓN FUTURA Q4 2022 (SIN TEST) ===================
+
+# Entrenamos con todo hasta sep-2022 y predecimos 3 meses (oct-nov-dic)
+train_full <- window(IPC_sinO, end = c(2022, 9))
+
+# Transformación como en tu compi
+train_full_est <- diff(log(train_full), differences = 2)
+
+# ---- Modelos ----
+set.seed(123)
+mod_arima  <- auto.arima(train_full_est, seasonal = FALSE)
+mod_sarima <- auto.arima(train_full_est, seasonal = TRUE)
+
+summary(mod_arima);  checkresiduals(mod_arima)
+summary(mod_sarima); checkresiduals(mod_sarima)
+
+# ---- Predicciones en la serie transformada ----
+h <- 3  # Oct, Nov, Dic
+fc_arima_t  <- forecast(mod_arima,  h = h)
+fc_sarima_t <- forecast(mod_sarima, h = h)
+
+# ---- Función para revertir (diffinv + exp) también para bandas ----
+revert_pred <- function(fc_obj, tail_train_log, differences = 2) {
+  # mean
+  mu  <- diffinv(fc_obj$mean,  differences = differences, xi = tail_train_log)
+  # bandas 80%
+  lo80 <- diffinv(fc_obj$lower[, "80%"], differences = differences, xi = tail_train_log)
+  up80 <- diffinv(fc_obj$upper[, "80%"], differences = differences, xi = tail_train_log)
+  # bandas 95%
+  lo95 <- diffinv(fc_obj$lower[, "95%"], differences = differences, xi = tail_train_log)
+  up95 <- diffinv(fc_obj$upper[, "95%"], differences = differences, xi = tail_train_log)
+  
+  # quitar los 'differences' primeros (semillas xi) y volver a nivel
+  dropn <- differences
+  out <- list(
+    mean = exp(mu[-seq_len(dropn)]),
+    lo80 = exp(lo80[-seq_len(dropn)]),
+    up80 = exp(up80[-seq_len(dropn)]),
+    lo95 = exp(lo95[-seq_len(dropn)]),
+    up95 = exp(up95[-seq_len(dropn)])
+  )
+  return(out)
 }
 
-# 3) Aplicar transformaciones a TODA la serie y volver a partir (estacionaria)
-IPC_est_all <- transform_with(IPC_sinO, use_log_IPC, s, D_IPC, d_IPC)
-offset <- D_IPC * s + d_IPC
-time_est <- time(IPC_sinO)[(offset + 1):length(IPC_sinO)]
-IPC_est_all <- ts(IPC_est_all, start = time_est[1], frequency = s)
+# Reversión a escala original (usamos las dos últimas observaciones log como xi)
+tail_log <- log(tail(train_full, 2))
+rev_arima  <- revert_pred(fc_arima_t,  tail_log, differences = 2)
+rev_sarima <- revert_pred(fc_sarima_t, tail_log, differences = 2)
 
-train_IPC <- window(IPC_est_all, start = c(2000, 1), end = c(2021, 1))
-test_IPC  <- window(IPC_est_all, start = c(2021, 2), end = c(2022, 2))
+# ====== Data para gráficos ======
+# Histórico reciente (p.ej., últimos 36 meses para que no quede muy largo)
+hist_win <- max(start(IPC_sinO)[1], 2019)
+IPC_hist <- window(IPC_sinO, start = c(hist_win, 1), end = c(2022, 9))
 
-# 4) Modelos y evaluación (en espacio transformado)
-# 4.1 Baseline: auto.arima NO estacional
-fit_IPC_ns <- auto.arima(train_IPC, seasonal = FALSE, stepwise = TRUE, approximation = FALSE)
-checkresiduals(fit_IPC_ns)
-fc_IPC_ns  <- forecast(fit_IPC_ns, h = length(test_IPC))
-acc_ns     <- accuracy(fc_IPC_ns, test_IPC)[, c("RMSE","MAE")]
-
-# 4.2 SARIMA (estacional)
-fit_IPC_s  <- auto.arima(train_IPC, seasonal = TRUE, stepwise = TRUE, approximation = FALSE)
-checkresiduals(fit_IPC_s)
-fc_IPC_s   <- forecast(fit_IPC_s, h = length(test_IPC))
-acc_s      <- accuracy(fc_IPC_s, test_IPC)[, c("RMSE","MAE")]
-
-# 4.3 ARIMA manual (1,0,0)
-fit_IPC_arima <- Arima(train_IPC, order = c(1,0,0))
-checkresiduals(fit_IPC_arima)
-fc_IPC_arima  <- forecast(fit_IPC_arima, h = length(test_IPC))
-acc_arima     <- accuracy(fc_IPC_arima, test_IPC)[, c("RMSE","MAE")]
-
-# 5) Comparativa y gráfico (espacio transformado)
-acc_table <- rbind(
-  `auto.arima (no estacional)` = acc_ns,
-  `SARIMA (seasonal=TRUE)`     = acc_s,
-  `ARIMA(1,0,0)`               = acc_arima
-)
-print(round(acc_table, 4))  # RMSE/MAE en TEST; MAPE no aplica aquí
-
-df_ipc <- tibble(
-  Fecha = as.numeric(time(test_IPC)),
-  Real  = as.numeric(test_IPC),
-  `auto.arima (no estacional)` = as.numeric(fc_IPC_ns$mean),
-  `SARIMA (seasonal=TRUE)`     = as.numeric(fc_IPC_s$mean),
-  `ARIMA(1,0,0)`               = as.numeric(fc_IPC_arima$mean)
-) |>
-  pivot_longer(-Fecha, names_to = "Serie", values_to = "Valor")
-
-ggplot(df_ipc, aes(Fecha, Valor, color = Serie, linetype = Serie)) +
-  geom_line(linewidth = 1) +
-  scale_color_manual(values = c(
-    "Real"="black",
-    "auto.arima (no estacional)"="darkorange",
-    "SARIMA (seasonal=TRUE)"="red",
-    "ARIMA(1,0,0)"="blue"
-  )) +
-  scale_linetype_manual(values = c(
-    "Real"="solid",
-    "auto.arima (no estacional)"="dashed",
-    "SARIMA (seasonal=TRUE)"="dotdash",
-    "ARIMA(1,0,0)"="solid"
-  )) +
-  labs(title = "IPC (transformado): comparación de modelos en test",
-       x = "Año", y = "IPC (estacionario)", color = "", linetype = "") +
-  theme_minimal(base_size = 12)
-
-# ---------------------------------------------------------------
-# B) (OPCIONAL) PRESENTACIÓN EN ESCALA ORIGINAL (log->exp)
-#    Ideal si quieres accuracy y gráficos “intuitivos” en valores originales
-# ---------------------------------------------------------------
-
-# Modelar en log(ORIGINAL) y volver con exp()
-fit_log <- auto.arima(log(raw_train_IPC), seasonal = TRUE, stepwise = TRUE, approximation = FALSE)
-checkresiduals(fit_log)
-
-fc_log  <- forecast(fit_log, h = h)
-pred_OR <- exp(fc_log$mean)         # back-transform a escala original
-acc_OR  <- accuracy(pred_OR, raw_test_IPC)[, c("RMSE","MAE","MAPE")]
-print(round(acc_OR, 4))
-
-# Gráfico en escala original (sin errores de colour)
-autoplot(window(IPC_sinO, start = c(2019, 1))) +
-  autolayer(window(IPC_sinO, start = time(raw_test_IPC)[1]),
-            series = "Real (test)") +
-  autolayer(ts(pred_OR, start = time(raw_test_IPC)[1], frequency = s),
-            series = "Pred (log->exp)") +
-  labs(title = "IPC (escala original): forecast con log->exp",
-       x = "Año", y = "IPC (original)") +
-  theme_minimal(base_size = 12)
-
-c(
-  no_estacional = Box.test(residuals(fit_IPC_ns),  type="Ljung-Box", lag=8)$p.value,
-  SARIMA        = Box.test(residuals(fit_IPC_s),   type="Ljung-Box", lag=8)$p.value,
-  ARIMA100      = Box.test(residuals(fit_IPC_arima), type="Ljung-Box", lag=8)$p.value
+df_hist <- data.frame(
+  Fecha = time(IPC_hist),
+  Valor = as.numeric(IPC_hist)
 )
 
+df_pred_arima <- data.frame(
+  Fecha = time(ts(rev_arima$mean, start = c(2022,10), frequency = 12)),
+  Pred  = as.numeric(rev_arima$mean),
+  LI80  = as.numeric(rev_arima$lo80),
+  LS80  = as.numeric(rev_arima$up80)
+)
 
-# ===============================================================
-# CONCLUSIONES – IPC
-#
-# 1) Modelos en la serie TRANSFORMADA (estacionaria):
-#    - auto.arima (no estacional)  → Ljung–Box p=0.264 (OK)
-#    - ARIMA(1,0,0) manual         → Ljung–Box p=0.265 (OK)
-#    - SARIMA(3,0,0)(0,0,1)[4]     → Ljung–Box p=0.477 (OK)
-#
-#    Rendimiento en TEST (RMSE / MAE):
-#    - ARIMA(1,0,0)          ≈ 0.702 / 0.538   ← MEJOR
-#    - auto.arima no estac.  ≈ 0.712 / 0.540   (muy similar)
-#    - SARIMA                ≈ 0.819 / 0.770   (peor, sesgo a la baja)
-#
-#    Interpretación del gráfico (transformado):
-#    - ARIMA(1,0,0) y el auto no estacional siguen bien la serie real.
-#    - SARIMA se aleja claramente (pronósticos demasiado bajos).
-#
-#    Decisión en esta fase:
-#    → Seleccionamos **ARIMA(1,0,0)** como modelo final para IPC en el
-#      espacio transformado, por menor error en test y residuos ~ ruido blanco.
-#
-# 2) Presentación en ESCALA ORIGINAL (opcional, log → exp):
-#    - Modelo seleccionado sobre log(IPC): ARIMA(2,1,2)(1,1,0)[4]
-#    - Ljung–Box p=0.372 (OK). Métricas en test (escala original):
-#         RMSE ≈ 1.71, MAE ≈ 1.42, MAPE ≈ 1.29%
-#    - El gráfico en escala original muestra que el pronóstico captura
-#      la subida final, aunque con cierta subestimación puntual.
-#
-# 3) Notas metodológicas:
-#    - Las **transformaciones (D y d)** se deciden **solo con TRAIN** y se
-#      aplican después a toda la serie para construir TRAIN/TEST transformados.
-#    - En la serie transformada el **MAPE no es interpretable**; se comparan
-#      modelos por **RMSE/MAE** y diagnóstico de residuos (Ljung–Box p>0.05).
-#    - Para comunicar resultados en valores originales, modelar en **log(IPC)**
-#      y volver con **exp()** es una opción limpia para obtener métricas
-#      (RMSE/MAE/MAPE) en escala original.
-#
-# 4) Conclusión final (IPC):
-#    - Modelo operativo (transformado): **ARIMA(1,0,0)**.
-#    - Para informe en escala original, puede añadirse el forecast de log(IPC)
-#      (exp back-transform), indicando sus métricas y que sirve solo a efectos
-#      de presentación.
-# ===============================================================
+df_pred_sarima <- data.frame(
+  Fecha = time(ts(rev_sarima$mean, start = c(2022,10), frequency = 12)),
+  Pred  = as.numeric(rev_sarima$mean),
+  LI80  = as.numeric(rev_sarima$lo80),
+  LS80  = as.numeric(rev_sarima$up80)
+)
 
+# ====== Gráficos ======
 
+# ARIMA futuro
+plot_future_arima <- ggplot() +
+  geom_line(data = df_hist, aes(x = Fecha, y = Valor), color = "blue", size = 1.2) +
+  geom_ribbon(data = df_pred_arima, aes(x = Fecha, ymin = LI80, ymax = LS80), alpha = 0.15) +
+  geom_line(data = df_pred_arima, aes(x = Fecha, y = Pred), color = "red", linetype = "dashed", size = 1.2) +
+  labs(title = "IPC mensual – Predicción ARIMA (Oct–Nov–Dic 2022)",
+       x = "Año", y = "IPC") +
+  theme_minimal()
+
+# SARIMA futuro
+plot_future_sarima <- ggplot() +
+  geom_line(data = df_hist, aes(x = Fecha, y = Valor), color = "blue", size = 1.2) +
+  geom_ribbon(data = df_pred_sarima, aes(x = Fecha, ymin = LI80, ymax = LS80), alpha = 0.15) +
+  geom_line(data = df_pred_sarima, aes(x = Fecha, y = Pred), color = "green4", linetype = "dashed", size = 1.2) +
+  labs(title = "IPC mensual – Predicción SARIMA (Oct–Nov–Dic 2022)",
+       x = "Año", y = "IPC") +
+  theme_minimal()
+
+grid.arrange(plot_future_arima, plot_future_sarima, ncol = 1)
+
+# (Opcional) ambos modelos en el mismo gráfico
+plot_future_both <- ggplot() +
+  geom_line(data = df_hist, aes(x = Fecha, y = Valor), color = "blue", size = 1.2) +
+  geom_line(data = df_pred_arima,  aes(x = Fecha, y = Pred), color = "red",   linetype = "dashed", size = 1.2) +
+  geom_line(data = df_pred_sarima, aes(x = Fecha, y = Pred), color = "green4", linetype = "dashed", size = 1.2) +
+  labs(title = "IPC mensual – Predicción Oct–Nov–Dic 2022 (ARIMA y SARIMA)",
+       x = "Año", y = "IPC") +
+  theme_minimal()
+
+plot_future_both
+
+# (Opcional) tabla rápida de valores predichos
+pred_tabla_q4 <- data.frame(
+  Mes = c("2022-10","2022-11","2022-12"),
+  ARIMA = round(df_pred_arima$Pred, 3),
+  SARIMA = round(df_pred_sarima$Pred, 3),
+  ARIMA_LI80 = round(df_pred_arima$LI80, 3),
+  ARIMA_LS80 = round(df_pred_arima$LS80, 3),
+  SARIMA_LI80 = round(df_pred_sarima$LI80, 3),
+  SARIMA_LS80 = round(df_pred_sarima$LS80, 3)
+)
+print(pred_tabla_q4)
+
+# ========== 7) ACCURACY (ELEGIR EL MEJOR) ==========
+acc_arima  <- accuracy(pred_IPC_revert_A, test_IPC)
+acc_sarima <- accuracy(pred_IPC_revert_S, test_IPC)
+
+acc_arima
+acc_sarima
+
+# (Opcional) Benchmarks:
+acc_naive  <- accuracy(naive(train_IPC,  h = h)$mean,  test_IPC)
+acc_snaive <- accuracy(snaive(train_IPC, h = h)$mean, test_IPC)
+acc_naive
