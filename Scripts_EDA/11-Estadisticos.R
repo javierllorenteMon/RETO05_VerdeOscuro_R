@@ -293,18 +293,43 @@ italia_trimestral <- italia_pib_trimestral %>%
   left_join(istat_completo %>% select(-Year, -Quarter), 
             by = "Periodo")
 
-# 9. Limpiar y enriquecer dataframe final
-cat("\n=== CREANDO DATAFRAME FINAL ===\n")
+# 9. Limpiar y enriquecer dataframe final CON PORCENTAJES TRIMESTRALES
+cat("\n=== CREANDO DATAFRAME FINAL CON PORCENTAJES TRIMESTRALES ===\n")
 
 italia_trimestral <- italia_trimestral %>%
   # Eliminar filas con Quarter NA
   filter(!is.na(Quarter)) %>%
   # Ordenar por Periodo
-  arrange(Periodo) %>%
-  # Crear variables adicionales
+  arrange(Country, Periodo) %>%
+  # Calcular porcentajes de cambio trimestral
+  group_by(Country) %>%
   mutate(
+    # Porcentaje de cambio del PIB trimestral
+    PIB_pct_cambio = (GDP.billion.currency.units / lag(GDP.billion.currency.units) - 1) * 100,
+    
+    # Porcentaje de cambio del IPC trimestral  
+    IPC_pct_cambio = (Consumer.Price.Index..CPI. / lag(Consumer.Price.Index..CPI.) - 1) * 100,
+    
+    # Porcentaje de cambio del empleo trimestral (si existe) - CORREGIDO
+    Empleo_pct_cambio = if('EMPLEO' %in% names(.)) (EMPLEO / lag(EMPLEO) - 1) * 100 else NA_real_,
+    
+    # Porcentaje de cambio de salarios trimestral - CORREGIDO
+    Salarios_pct_cambio = if('Indice_salarios' %in% names(.)) (Indice_salarios / lag(Indice_salarios) - 1) * 100 else NA_real_,
+    
+    # Porcentaje de cambio de exportaciones trimestral - CORREGIDO
+    Exportaciones_pct_cambio = if('exportaciones' %in% names(.)) (exportaciones / lag(exportaciones) - 1) * 100 else NA_real_,
+    
+    # Porcentaje de cambio de importaciones trimestral - CORREGIDO
+    Importaciones_pct_cambio = if('importaciones' %in% names(.)) (importaciones / lag(importaciones) - 1) * 100 else NA_real_,
+    
+    # Porcentaje de cambio de confianza del consumidor trimestral - CORREGIDO
+    Confianza_pct_cambio = if('Indice_confianza_compuesto' %in% names(.)) (Indice_confianza_compuesto / lag(Indice_confianza_compuesto) - 1) * 100 else NA_real_,
+    
+    # Porcentaje de cambio de precios de vivienda trimestral - CORREGIDO
+    Precios_vivienda_pct_cambio = if('Indice_precios_vivienda' %in% names(.)) (Indice_precios_vivienda / lag(Indice_precios_vivienda) - 1) * 100 else NA_real_,
+    
     # Calcular nuevas variables
-    Deficit_Surplus_Pct_PIB = ifelse(exists('Deficit_Surplus') & exists('GDP.billion.currency.units') & 
+    Deficit_Surplus_Pct_PIB = ifelse('Deficit_Surplus' %in% names(.) & 'GDP.billion.currency.units' %in% names(.) & 
                                        !is.na(GDP.billion.currency.units) & GDP.billion.currency.units != 0,
                                      (Deficit_Surplus / (GDP.billion.currency.units * 1e9)) * 100, NA),
     
@@ -316,6 +341,7 @@ italia_trimestral <- italia_trimestral %>%
              ifelse(!is.na(Indice_confianza_mensual_promedio), Indice_confianza_mensual_promedio, NA))
     )
   ) %>%
+  ungroup() %>%
   # ELIMINAR LAS COLUMNAS Year Y Quarter
   select(-Year, -Quarter) %>%
   # Eliminar las columnas Balanza_comercial y Trimestre_key si existen
@@ -323,8 +349,10 @@ italia_trimestral <- italia_trimestral %>%
   # Seleccionar y ordenar columnas
   select(
     Country, Periodo,
-    # Variables macroeconómicas
+    # Variables macroeconómicas ORIGINALES
     GDP.billion.currency.units, Consumer.Price.Index..CPI.,
+    # Porcentajes de cambio TRIMESTRALES (NUEVAS VARIABLES)
+    matches("_pct_cambio"),
     # Empleo
     matches("EMPLEO"), matches("DESEMPLEO"), matches("Indice_empleo"),
     # Salarios
@@ -347,8 +375,8 @@ italia_trimestral <- italia_trimestral %>%
   # Eliminar columnas totalmente vacías
   select(where(~!all(is.na(.))))
 
-# 10. Análisis exploratorio completo
-cat("\n=== ANÁLISIS EXPLORATORIO COMPLETO ===\n")
+# 10. ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES
+cat("\n=== ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES TRIMESTRALES ===\n")
 
 # Estructura del dataframe
 cat("DIMENSIONES:", dim(italia_trimestral), "\n")
@@ -358,7 +386,8 @@ cat("PERIODO:", min(italia_trimestral$Periodo, na.rm = TRUE), "-", max(italia_tr
 cat("\n=== VARIABLES DISPONIBLES ===\n")
 variables_por_tipo <- list(
   "Identificadores" = names(italia_trimestral)[sapply(italia_trimestral, is.character)],
-  "Numéricas" = names(italia_trimestral)[sapply(italia_trimestral, is.numeric)]
+  "Numéricas (Índices)" = names(italia_trimestral)[sapply(italia_trimestral, is.numeric) & !grepl("_pct_cambio", names(italia_trimestral))],
+  "Porcentajes de Cambio Trimestral" = names(italia_trimestral)[grepl("_pct_cambio", names(italia_trimestral))]
 )
 
 for(tipo in names(variables_por_tipo)) {
@@ -372,153 +401,259 @@ valores_faltantes <- colSums(is.na(italia_trimestral))
 cat("Variables con más del 20% de valores faltantes:\n")
 print(valores_faltantes[valores_faltantes > nrow(italia_trimestral) * 0.2])
 
-# 11. Visualizaciones completas
-cat("\n=== CREANDO VISUALIZACIONES ===\n")
+# 11. CREAR DATAFRAMES SEPARADOS POR TIPO DE VARIABLE
+cat("\n=== CREANDO DATAFRAMES SEPARADOS POR TIPO DE VARIABLE ===\n")
 
-# Gráfico 1: Evolución del PIB
-if("GDP.billion.currency.units" %in% names(italia_trimestral)) {
-  p1 <- ggplot(italia_trimestral, aes(x = Periodo, y = GDP.billion.currency.units, group = 1)) +
-    geom_line(color = "steelblue", size = 1.2) +
-    geom_point(size = 1, color = "steelblue") +
-    labs(title = "Evolución Trimestral del PIB en Italia", 
-         y = "PIB (miles de millones)", 
-         x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  print(p1)
-}
+# Enfoque seguro: primero listar las variables disponibles
+available_vars <- names(italia_trimestral)
+cat("Todas las variables disponibles:\n")
+print(available_vars)
 
-# Gráfico 2: Evolución del IPC
-if("Consumer.Price.Index..CPI." %in% names(italia_trimestral)) {
-  p2 <- ggplot(italia_trimestral, aes(x = Periodo, y = Consumer.Price.Index..CPI., group = 1)) +
-    geom_line(color = "darkred", size = 1.2) +
-    geom_point(size = 1, color = "darkred") +
-    labs(title = "Evolución Trimestral del IPC en Italia", 
-         y = "IPC", 
-         x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  print(p2)
-}
+# Identificar variables de porcentaje que realmente existen
+pct_vars <- available_vars[grepl("_pct_cambio|_Pct|Tasa_|EMPLEO|DESEMPLEO", available_vars)]
+cat("\nVariables de porcentaje disponibles:\n")
+print(pct_vars)
 
-# Gráfico 3: Empleo vs Desempleo
-if(all(c("EMPLEO", "DESEMPLEO") %in% names(italia_trimestral))) {
-  empleo_data <- italia_trimestral %>%
-    select(Periodo, EMPLEO, DESEMPLEO) %>%
-    pivot_longer(cols = c(EMPLEO, DESEMPLEO), names_to = "Variable", values_to = "Valor")
+# Identificar variables absolutas que realmente existen  
+abs_vars <- available_vars[!grepl("_pct_cambio|_Pct|Tasa_", available_vars) & 
+                             !available_vars %in% c("Country", "Periodo") &
+                             sapply(italia_trimestral, is.numeric)]
+cat("\nVariables absolutas disponibles:\n")
+print(abs_vars)
+
+# DataFrame 1: Variables en Porcentajes (%) - Solo las que existen
+italia_porcentajes <- italia_trimestral %>%
+  select(Country, Periodo, all_of(pct_vars))
+
+# DataFrame 2: Variables en Valores Absolutos - Solo las que existen
+italia_absolutos <- italia_trimestral %>%
+  select(Country, Periodo, all_of(abs_vars))
+
+# Ver estructura final CORREGIDA
+cat("=== DATAFRAME PORCENTAJES FINAL ===\n")
+cat("Dimensiones:", dim(italia_porcentajes), "\n")
+cat("Variables:", names(italia_porcentajes), "\n\n")
+
+cat("=== DATAFRAME ABSOLUTOS FINAL ===\n")
+cat("Dimensiones:", dim(italia_absolutos), "\n")
+cat("Variables:", names(italia_absolutos), "\n\n")
+
+# Verificaciones adicionales
+cat("=== VERIFICACIONES ADICIONALES ===\n")
+cat("¿Hay columnas duplicadas en porcentajes?:", any(duplicated(names(italia_porcentajes))), "\n")
+cat("¿Hay columnas duplicadas en absolutos?:", any(duplicated(names(italia_absolutos))), "\n")
+
+columnas_comunes <- intersect(names(italia_porcentajes), names(italia_absolutos))
+cat("Columnas comunes entre dataframes:", columnas_comunes, "\n")
+
+# 12. GRÁFICOS DE CORRELACIÓN
+cat("\n=== CREANDO GRÁFICOS DE CORRELACIÓN ===\n")
+
+# Función para crear matriz de correlación enfocada en GDP y CPI
+crear_matriz_correlacion_focalizada <- function(df, titulo) {
+  # Seleccionar solo variables numéricas
+  df_numeric <- df %>%
+    select(where(is.numeric))
   
-  p3 <- ggplot(empleo_data, aes(x = Periodo, y = Valor, color = Variable, group = Variable)) +
-    geom_line(size = 1) +
-    geom_point(size = 0.8) +
-    labs(title = "Evolución de Tasas de Empleo y Desempleo",
-         y = "Porcentaje (%)", x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "top")
-  print(p3)
-}
-
-# Gráfico 4: Comercio exterior
-if(all(c("exportaciones", "importaciones") %in% names(italia_trimestral))) {
-  comercio_data <- italia_trimestral %>%
-    select(Periodo, exportaciones, importaciones) %>%
-    pivot_longer(cols = c(exportaciones, importaciones), names_to = "Variable", values_to = "Valor")
+  # Verificar que hay suficientes variables
+  if(ncol(df_numeric) < 2) {
+    cat("No hay suficientes variables numéricas para", titulo, "\n")
+    return(NULL)
+  }
   
-  p4 <- ggplot(comercio_data, aes(x = Periodo, y = Valor, color = Variable, group = Variable)) +
-    geom_line(size = 1) +
-    geom_point(size = 0.8) +
-    labs(title = "Evolución de Exportaciones e Importaciones",
-         y = "Valor", x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "top")
-  print(p4)
-}
-
-# Gráfico 5: Confianza del consumidor
-if(any(grepl("confianza", names(italia_trimestral)))) {
-  confianza_vars <- names(italia_trimestral)[grepl("confianza", names(italia_trimestral))]
-  confianza_data <- italia_trimestral %>%
-    select(Periodo, all_of(confianza_vars)) %>%
-    pivot_longer(cols = all_of(confianza_vars), names_to = "Variable", values_to = "Valor")
+  # Calcular matriz de correlación completa
+  cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
   
-  p5 <- ggplot(confianza_data, aes(x = Periodo, y = Valor, color = Variable, group = Variable)) +
-    geom_line(size = 1) +
-    geom_point(size = 0.8) +
-    labs(title = "Evolución de la Confianza del Consumidor",
-         y = "Índice", x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "top")
-  print(p5)
-}
-
-# Gráfico 6: Precios de vivienda
-if(any(grepl("precios_vivienda", names(italia_trimestral)))) {
-  vivienda_vars <- names(italia_trimestral)[grepl("precios_vivienda", names(italia_trimestral))]
-  vivienda_data <- italia_trimestral %>%
-    select(Periodo, all_of(vivienda_vars)) %>%
-    pivot_longer(cols = all_of(vivienda_vars), names_to = "Variable", values_to = "Valor")
+  # Filtrar solo las correlaciones con GDP y CPI
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.")
+  available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
   
-  p6 <- ggplot(vivienda_data, aes(x = Periodo, y = Valor, color = Variable, group = Variable)) +
-    geom_line(size = 1) +
-    geom_point(size = 0.8) +
-    labs(title = "Evolución de Precios de Vivienda",
-         y = "Índice/Tasa", x = "Periodo") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "top")
-  print(p6)
+  if(length(available_targets) == 0) {
+    cat("No se encontraron las variables GDP o CPI en", titulo, "\n")
+    return(NULL)
+  }
+  
+  # Crear submatriz solo con las correlaciones de interés
+  if(length(available_targets) == 1) {
+    # Si solo una de las dos variables está disponible
+    cor_submatrix <- cor_matrix[, available_targets, drop = FALSE]
+  } else {
+    # Si ambas variables están disponibles
+    cor_submatrix <- cor_matrix[, available_targets]
+  }
+  
+  # Eliminar las filas de las propias variables objetivo (autocorrelación = 1)
+  other_vars <- setdiff(rownames(cor_submatrix), available_targets)
+  cor_submatrix <- cor_submatrix[other_vars, , drop = FALSE]
+  
+  # Limpiar nombres para mejor visualización
+  colnames_cor <- gsub("\\.", " ", colnames(cor_submatrix))
+  colnames_cor <- gsub("_", " ", colnames_cor)
+  colnames_cor <- str_to_title(colnames_cor)
+  
+  rownames_cor <- gsub("\\.", " ", rownames(cor_submatrix))
+  rownames_cor <- gsub("_", " ", rownames_cor)
+  rownames_cor <- str_to_title(rownames_cor)
+  
+  # Crear gráfico de correlación focalizado
+  corrplot(t(cor_submatrix),  # Transponer para mejor visualización
+           method = "color",
+           tl.col = "black",
+           tl.srt = 45,
+           addCoef.col = "black",
+           number.cex = 0.7,
+           mar = c(0, 0, 2, 0),
+           title = paste(titulo, "\n(Correlaciones con GDP y CPI)"),
+           is.corr = TRUE,
+           cl.lim = c(-1, 1))
 }
 
-# Gráfico 7: Matriz de correlación
-variables_numericas <- italia_trimestral %>%
+# Función original para otros dataframes (mantener igual)
+crear_matriz_correlacion <- function(df, titulo) {
+  # Seleccionar solo variables numéricas
+  df_numeric <- df %>%
+    select(where(is.numeric))
+  
+  # Verificar que hay suficientes variables
+  if(ncol(df_numeric) < 2) {
+    cat("No hay suficientes variables numéricas para", titulo, "\n")
+    return(NULL)
+  }
+  
+  # Calcular matriz de correlación
+  cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+  
+  # Limpiar nombres para mejor visualización
+  colnames(cor_matrix) <- gsub("\\.", " ", colnames(cor_matrix))
+  colnames(cor_matrix) <- gsub("_", " ", colnames(cor_matrix))
+  colnames(cor_matrix) <- str_to_title(colnames(cor_matrix))
+  rownames(cor_matrix) <- colnames(cor_matrix)
+  
+  # Crear gráfico de correlación
+  corrplot(cor_matrix, 
+           method = "color",
+           type = "upper",
+           order = "hclust",
+           tl.col = "black",
+           tl.srt = 45,
+           addCoef.col = "black",
+           number.cex = 0.7,
+           mar = c(0, 0, 2, 0),
+           title = titulo,
+           diag = FALSE)
+}
+
+# Función adicional para crear tabla resumen de correlaciones con GDP y CPI
+crear_tabla_correlaciones_gdp_cpi <- function(df) {
+  df_numeric <- df %>%
+    select(where(is.numeric))
+  
+  if(ncol(df_numeric) < 2) {
+    return(NULL)
+  }
+  
+  cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+  
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.")
+  available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
+  
+  if(length(available_targets) == 0) {
+    return(NULL)
+  }
+  
+  # Crear tabla resumen
+  correlaciones <- data.frame()
+  
+  for(target_var in available_targets) {
+    other_vars <- setdiff(colnames(cor_matrix), target_var)
+    for(var in other_vars) {
+      correlaciones <- rbind(correlaciones, data.frame(
+        Variable_Objetivo = target_var,
+        Variable = var,
+        Correlacion = cor_matrix[var, target_var]
+      ))
+    }
+  }
+  
+  # Ordenar por valor absoluto de correlación
+  correlaciones <- correlaciones %>%
+    mutate(Correlacion_Abs = abs(Correlacion)) %>%
+    arrange(Variable_Objetivo, desc(Correlacion_Abs)) %>%
+    select(-Correlacion_Abs)
+  
+  return(correlaciones)
+}
+
+# Matriz de correlación FOCALIZADA para el dataframe completo (solo GDP y CPI)
+cat("=== MATRIZ DE CORRELACIÓN - DATAFRAME COMPLETO (FOCALIZADA EN GDP Y CPI) ===\n")
+if(ncol(italia_trimestral %>% select(where(is.numeric))) >= 2) {
+  crear_matriz_correlacion_focalizada(italia_trimestral, "Matriz de Correlación - Italia Trimestral")
+} else {
+  cat("No hay suficientes variables numéricas en el dataframe completo\n")
+}
+
+# Matriz de correlación normal para variables porcentuales
+cat("=== MATRIZ DE CORRELACIÓN - VARIABLES PORCENTUALES ===\n")
+if(ncol(italia_porcentajes %>% select(where(is.numeric))) >= 2) {
+  crear_matriz_correlacion(italia_porcentajes, "Matriz de Correlación - Variables Porcentuales")
+} else {
+  cat("No hay suficientes variables numéricas en italia_porcentajes\n")
+}
+
+# Matriz de correlación normal para variables absolutas
+cat("=== MATRIZ DE CORRELACIÓN - VARIABLES ABSOLUTAS ===\n")
+if(ncol(italia_absolutos %>% select(where(is.numeric))) >= 2) {
+  crear_matriz_correlacion(italia_absolutos, "Matriz de Correlación - Variables Absolutas")
+} else {
+  cat("No hay suficientes variables numéricas en italia_absolutos\n")
+}
+
+# Crear y mostrar tabla resumen de correlaciones
+cat("\n=== TABLA RESUMEN DE CORRELACIONES CON GDP Y CPI ===\n")
+tabla_correlaciones <- crear_tabla_correlaciones_gdp_cpi(italia_trimestral)
+if(!is.null(tabla_correlaciones)) {
+  print(tabla_correlaciones)
+  
+  # Guardar tabla resumen (opcional)
+  # write.csv(tabla_correlaciones, "Datos/correlaciones_gdp_cpi_italia.csv", 
+  #           row.names = FALSE, fileEncoding = "UTF-8")
+  cat("# Tabla de correlaciones guardada: Datos/correlaciones_gdp_cpi_italia.csv\n")
+}
+
+# 13. ANÁLISIS ESTADÍSTICO COMPLETO DE PORCENTAJES
+cat("\n=== ANÁLISIS ESTADÍSTICO DE PORCENTAJES TRIMESTRALES ===\n")
+
+# Estadísticas descriptivas de los porcentajes
+pct_variables <- italia_trimestral %>% select(matches("_pct_cambio"))
+
+if(ncol(pct_variables) > 0) {
+  cat("ESTADÍSTICAS DESCRIPTIVAS - PORCENTAJES DE CAMBIO TRIMESTRAL:\n")
+  print(describe(pct_variables))
+  
+  # Resumen de crecimiento/recesión
+  cat("\n=== RESUMEN DE CRECIMIENTO/RECESIÓN ===\n")
+  for(var in names(pct_variables)) {
+    var_name <- gsub("_pct_cambio", "", var)
+    positive <- sum(pct_variables[[var]] > 0, na.rm = TRUE)
+    negative <- sum(pct_variables[[var]] < 0, na.rm = TRUE)
+    zero <- sum(pct_variables[[var]] == 0, na.rm = TRUE)
+    total <- positive + negative + zero
+    
+    cat(var_name, ":\n")
+    cat("  Trimestres con crecimiento:", positive, "(", round(positive/total*100, 1), "%)\n")
+    cat("  Trimestres con disminución:", negative, "(", round(negative/total*100, 1), "%)\n")
+    cat("  Trimestres sin cambio:", zero, "(", round(zero/total*100, 1), "%)\n\n")
+  }
+}
+
+# Estadísticas descriptivas de variables originales
+variables_numericas_df <- italia_trimestral %>%
   select(where(is.numeric)) %>%
   select_if(~sum(!is.na(.)) > 10)  # Solo variables con suficientes datos
 
-if(ncol(variables_numericas) > 2) {
-  cor_matrix <- cor(variables_numericas, use = "pairwise.complete.obs")
-  p7 <- corrplot(cor_matrix, method = "color", type = "upper",
-                 addCoef.col = "black",  # Añadir coeficientes en negro
-                 number.cex = 0.6,       # Tamaño de los números
-                 tl.col = "black", tl.cex = 0.7, 
-                 title = "Matriz de Correlación - Italia",
-                 mar = c(0, 0, 2, 0))
-  print(p7)
-}
-
-# Gráfico 8: Distribución de variables principales
-vars_principales <- italia_trimestral %>%
-  select(any_of(c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", 
-                  "EMPLEO", "DESEMPLEO", "Indice_empleo", "Indice_salarios",
-                  "Productividad_laboral", "exportaciones","importaciones", 
-                  "Total.Goverment.expenditure","Deficit_Surplus", 
-                  "Deficit_Surplus_Pct", "Deficit_Surplus_Pct_PIB",
-                  "Indice_confianza_trimestral", "Indice_confianza_mensual_promedio",
-                  "Indice_confianza_compuesto", "Indice_precios_vivienda",
-                  "Tasa_crecimiento_precios_vivienda"))) %>%
-  select(where(is.numeric))
-
-if(ncol(vars_principales) > 0) {
-  vars_long <- vars_principales %>%
-    pivot_longer(cols = everything(), names_to = "Variable", values_to = "Valor")
-  
-  p8 <- ggplot(vars_long, aes(y = Valor, fill = Variable)) +
-    geom_boxplot() +
-    theme_minimal() +
-    facet_wrap(~Variable, scales = "free_y") +
-    labs(title = "Distribución de Variables Principales") +
-    theme(legend.position = "none")
-  print(p8)
-}
-
-# 12. Análisis estadístico completo
-cat("\n=== ANÁLISIS ESTADÍSTICO COMPLETO ===\n")
-
-# Estadísticas descriptivas
-if(ncol(variables_numericas) > 0) {
-  cat("ESTADÍSTICAS DESCRIPTIVAS:\n")
-  print(describe(variables_numericas))
+if(ncol(variables_numericas_df) > 0) {
+  cat("ESTADÍSTICAS DESCRIPTIVAS - VARIABLES ORIGINALES:\n")
+  print(describe(variables_numericas_df))
 }
 
 # Resumen por año (extraer año del Periodo para el resumen)
@@ -530,28 +665,57 @@ resumen_anual <- italia_trimestral %>%
     Trimestres = n(),
     PIB_promedio = mean(GDP.billion.currency.units, na.rm = TRUE),
     IPC_promedio = mean(Consumer.Price.Index..CPI., na.rm = TRUE),
+    PIB_pct_promedio = mean(PIB_pct_cambio, na.rm = TRUE),
+    IPC_pct_promedio = mean(IPC_pct_cambio, na.rm = TRUE),
     Confianza_promedio = mean(Indice_confianza_compuesto, na.rm = TRUE),
     Precios_vivienda_promedio = mean(Indice_precios_vivienda, na.rm = TRUE),
     .groups = 'drop'
   )
 print(resumen_anual)
 
-# 13. Guardar resultados
-cat("\n=== GUARDANDO RESULTADOS ===\n")
+# 14. GUARDAR RESULTADOS (COMENTADO)
+cat("\n=== GUARDANDO RESULTADOS (LÍNEAS COMENTADAS) ===\n")
 
-# Dataframe completo
-write.csv(italia_trimestral, "Datos/italia_trimestral_completo_definitivo.csv", 
-          row.names = FALSE, fileEncoding = "UTF-8")
-cat("✓ Dataframe completo guardado: Datos/italia_trimestral_completo_definitivo.csv\n")
+# Dataframe completo con porcentajes
+#write.csv(italia_trimestral, "Datos/italia_trimestral_con_porcentajes.csv", 
+#          row.names = FALSE, fileEncoding = "UTF-8")
+cat("# Dataframe con porcentajes: Datos/italia_trimestral_con_porcentajes.csv\n")
 
-# Resumen estadístico
-write.csv(describe(variables_numericas), "Datos/resumen_estadistico_italia.csv", 
-          row.names = TRUE, fileEncoding = "UTF-8")
-cat("✓ Resumen estadístico guardado: Datos/resumen_estadistico_italia.csv\n")
+# Resumen estadístico de porcentajes
+#if(ncol(pct_variables) > 0) {
+#  write.csv(describe(pct_variables), "Datos/resumen_porcentajes_trimestrales.csv", 
+#            row.names = TRUE, fileEncoding = "UTF-8")
+#  cat("# Resumen de porcentajes: Datos/resumen_porcentajes_trimestrales.csv\n")
+#}
 
-cat("\n=== PROCESO COMPLETADO ===\n")
-cat("Se han integrado exitosamente los 4 archivos nuevos:\n")
-cat("1. Confianza del consumidor trimestral\n")
-cat("2. Confianza del consumidor mensual\n") 
-cat("3. Precios de vivienda\n")
-cat("4. Tasa de crecimiento precios vivienda\n")
+# Resumen estadístico general
+#write.csv(describe(variables_numericas_df), "Datos/resumen_estadistico_italia.csv", 
+#          row.names = TRUE, fileEncoding = "UTF-8")
+cat("# Resumen estadístico: Datos/resumen_estadistico_italia.csv\n")
+
+# Resumen anual
+#write.csv(resumen_anual, "Datos/resumen_anual_italia.csv", 
+#          row.names = FALSE, fileEncoding = "UTF-8")
+cat("# Resumen anual: Datos/resumen_anual_italia.csv\n")
+
+# Guardar dataframes separados
+#write.csv(italia_porcentajes, "Datos/italia_porcentajes.csv", row.names = FALSE, fileEncoding = "UTF-8")
+#write.csv(italia_absolutos, "Datos/italia_absolutos.csv", row.names = FALSE, fileEncoding = "UTF-8")
+cat("# Dataframes separados: italia_porcentajes.csv e italia_absolutos.csv\n")
+
+cat("\n=== DATAFRAMES SEPARADOS CREADOS ===\n")
+cat("✓ italia_porcentajes -", ncol(italia_porcentajes), "variables (", length(pct_vars), "porcentuales + 2 identificadores)\n")
+cat("✓ italia_absolutos -", ncol(italia_absolutos), "variables (", length(abs_vars), "absolutas + 2 identificadores)\n")
+cat("※ Los dataframes están disponibles en el entorno pero no guardados (líneas comentadas)\n")
+
+cat("\n=== PROCESO COMPLETADO CON MATRICES DE CORRELACIÓN FOCALIZADAS ===\n")
+cat("Se han creado 3 matrices de correlación:\n")
+cat("1. DataFrame completo (italia_trimestral) - FOCALIZADO EN GDP Y CPI\n")
+cat("2. Variables porcentuales (italia_porcentajes) - Completa\n")
+cat("3. Variables absolutas (italia_absolutos) - Completa\n")
+cat("Se han calculado los siguientes porcentajes de cambio trimestral:\n")
+if(ncol(pct_variables) > 0) {
+  print(names(pct_variables))
+} else {
+  cat("No se calcularon porcentajes de cambio\n")
+}
