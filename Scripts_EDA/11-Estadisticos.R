@@ -8,6 +8,8 @@ library(tidyr)
 library(psych)
 library(lubridate)
 library(stringr)
+library(gridExtra)
+
 
 # 1. Leer ficheros originales
 cat("=== CARGANDO DATOS ORIGINALES ===\n")
@@ -673,49 +675,304 @@ resumen_anual <- italia_trimestral %>%
   )
 print(resumen_anual)
 
-# 14. GUARDAR RESULTADOS (COMENTADO)
-cat("\n=== GUARDANDO RESULTADOS (LÍNEAS COMENTADAS) ===\n")
+# 15. GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN DE italia_trimestral
+cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN ===\n")
 
-# Dataframe completo con porcentajes
-#write.csv(italia_trimestral, "Datos/italia_trimestral_con_porcentajes.csv", 
-#          row.names = FALSE, fileEncoding = "UTF-8")
-cat("# Dataframe con porcentajes: Datos/italia_trimestral_con_porcentajes.csv\n")
+# Preparar datos para gráficos
+italia_plot_data <- italia_trimestral %>%
+  mutate(
+    Fecha = as.Date(paste0(substr(Periodo, 1, 4),
+                           ifelse(substr(Periodo, 6, 7) == "Q1", "-01-01",
+                                  ifelse(substr(Periodo, 6, 7) == "Q2", "-04-01",
+                                         ifelse(substr(Periodo, 6, 7) == "Q3", "-07-01", "-10-01"))))),
+    Year = as.numeric(substr(Periodo, 1, 4)),
+    Quarter = substr(Periodo, 6, 7)
+  ) %>%
+  arrange(Fecha)
 
-# Resumen estadístico de porcentajes
-#if(ncol(pct_variables) > 0) {
-#  write.csv(describe(pct_variables), "Datos/resumen_porcentajes_trimestrales.csv", 
-#            row.names = TRUE, fileEncoding = "UTF-8")
-#  cat("# Resumen de porcentajes: Datos/resumen_porcentajes_trimestrales.csv\n")
-#}
+# 1. GRÁFICO DEL GDP (PIB)
+cat("=== GRÁFICO 1: GDP (PIB) ===\n")
 
-# Resumen estadístico general
-#write.csv(describe(variables_numericas_df), "Datos/resumen_estadistico_italia.csv", 
-#          row.names = TRUE, fileEncoding = "UTF-8")
-cat("# Resumen estadístico: Datos/resumen_estadistico_italia.csv\n")
-
-# Resumen anual
-#write.csv(resumen_anual, "Datos/resumen_anual_italia.csv", 
-#          row.names = FALSE, fileEncoding = "UTF-8")
-cat("# Resumen anual: Datos/resumen_anual_italia.csv\n")
-
-# Guardar dataframes separados
-#write.csv(italia_porcentajes, "Datos/italia_porcentajes.csv", row.names = FALSE, fileEncoding = "UTF-8")
-#write.csv(italia_absolutos, "Datos/italia_absolutos.csv", row.names = FALSE, fileEncoding = "UTF-8")
-cat("# Dataframes separados: italia_porcentajes.csv e italia_absolutos.csv\n")
-
-cat("\n=== DATAFRAMES SEPARADOS CREADOS ===\n")
-cat("✓ italia_porcentajes -", ncol(italia_porcentajes), "variables (", length(pct_vars), "porcentuales + 2 identificadores)\n")
-cat("✓ italia_absolutos -", ncol(italia_absolutos), "variables (", length(abs_vars), "absolutas + 2 identificadores)\n")
-cat("※ Los dataframes están disponibles en el entorno pero no guardados (líneas comentadas)\n")
-
-cat("\n=== PROCESO COMPLETADO CON MATRICES DE CORRELACIÓN FOCALIZADAS ===\n")
-cat("Se han creado 3 matrices de correlación:\n")
-cat("1. DataFrame completo (italia_trimestral) - FOCALIZADO EN GDP Y CPI\n")
-cat("2. Variables porcentuales (italia_porcentajes) - Completa\n")
-cat("3. Variables absolutas (italia_absolutos) - Completa\n")
-cat("Se han calculado los siguientes porcentajes de cambio trimestral:\n")
-if(ncol(pct_variables) > 0) {
-  print(names(pct_variables))
+# Verificar que existe la variable GDP
+if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
+  
+  gdp_stats <- italia_plot_data %>%
+    summarise(
+      media = mean(GDP.billion.currency.units, na.rm = TRUE),
+      sd = sd(GDP.billion.currency.units, na.rm = TRUE),
+      min = min(GDP.billion.currency.units, na.rm = TRUE),
+      max = max(GDP.billion.currency.units, na.rm = TRUE),
+      n_no_na = sum(!is.na(GDP.billion.currency.units)),
+      n_total = n()
+    )
+  
+  # Gráfico del GDP en valores absolutos
+  gdp_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = GDP.billion.currency.units)) +
+    geom_line(color = "#2E86AB", size = 1.2) +
+    geom_point(color = "#2E86AB", size = 2, alpha = 0.8) +
+    geom_smooth(method = "loess", color = "#F24236", linetype = "dashed", se = FALSE, alpha = 0.6) +
+    labs(
+      title = "Evolución del PIB - Italia",
+      subtitle = paste0("Media: ", round(gdp_stats$media, 2), " billones | ",
+                        "Mín: ", round(gdp_stats$min, 2), " | ",
+                        "Máx: ", round(gdp_stats$max, 2)),
+      x = "Fecha",
+      y = "PIB (Billones de unidades monetarias)",
+      caption = paste0("Datos: ", gdp_stats$n_no_na, "/", gdp_stats$n_total, " trimestres")
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
+      plot.caption = element_text(size = 9, color = "gray50", margin = margin(t = 10)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12, face = "bold"),
+      panel.grid.major = element_line(color = "gray90", size = 0.2),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    ) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02))
+  
+  print(gdp_plot)
+  cat("✓ Gráfico del GDP creado y mostrado\n")
+  
 } else {
-  cat("No se calcularon porcentajes de cambio\n")
+  cat("✗ Variable GDP.billion.currency.units no encontrada\n")
 }
+
+# 2. GRÁFICO DE INFLACIÓN (CPI)
+cat("\n=== GRÁFICO 2: INFLACIÓN (CPI) ===\n")
+
+# Verificar que existe la variable CPI
+if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
+  
+  cpi_stats <- italia_plot_data %>%
+    summarise(
+      media = mean(Consumer.Price.Index..CPI., na.rm = TRUE),
+      sd = sd(Consumer.Price.Index..CPI., na.rm = TRUE),
+      min = min(Consumer.Price.Index..CPI., na.rm = TRUE),
+      max = max(Consumer.Price.Index..CPI., na.rm = TRUE),
+      n_no_na = sum(!is.na(Consumer.Price.Index..CPI.)),
+      n_total = n()
+    )
+  
+  # Gráfico del CPI en valores absolutos
+  cpi_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = Consumer.Price.Index..CPI.)) +
+    geom_line(color = "#A23B72", size = 1.2) +
+    geom_point(color = "#A23B72", size = 2, alpha = 0.8) +
+    geom_smooth(method = "loess", color = "#F24236", linetype = "dashed", se = FALSE, alpha = 0.6) +
+    labs(
+      title = "Evolución del Índice de Precios al Consumidor (IPC) - Italia",
+      subtitle = paste0("Media: ", round(cpi_stats$media, 2), " | ",
+                        "Mín: ", round(cpi_stats$min, 2), " | ",
+                        "Máx: ", round(cpi_stats$max, 2)),
+      x = "Fecha",
+      y = "Índice de Precios al Consumidor (IPC)",
+      caption = paste0("Datos: ", cpi_stats$n_no_na, "/", cpi_stats$n_total, " trimestres")
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
+      plot.caption = element_text(size = 9, color = "gray50", margin = margin(t = 10)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12, face = "bold"),
+      panel.grid.major = element_line(color = "gray90", size = 0.2),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    ) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02))
+  
+  print(cpi_plot)
+  cat("✓ Gráfico del CPI creado y mostrado\n")
+  
+} else {
+  cat("✗ Variable Consumer.Price.Index..CPI. no encontrada\n")
+}
+
+# 3. GRÁFICO COMPARATIVO GDP vs CPI (si ambas existen)
+cat("\n=== GRÁFICO 3: COMPARACIÓN GDP vs CPI ===\n")
+
+if("GDP.billion.currency.units" %in% names(italia_plot_data) & 
+   "Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
+  
+  # Normalizar ambas variables para comparación
+  comparacion_data <- italia_plot_data %>%
+    select(Fecha, GDP.billion.currency.units, Consumer.Price.Index..CPI.) %>%
+    mutate(
+      GDP_normalized = (GDP.billion.currency.units - min(GDP.billion.currency.units, na.rm = TRUE)) / 
+        (max(GDP.billion.currency.units, na.rm = TRUE) - min(GDP.billion.currency.units, na.rm = TRUE)),
+      CPI_normalized = (Consumer.Price.Index..CPI. - min(Consumer.Price.Index..CPI., na.rm = TRUE)) / 
+        (max(Consumer.Price.Index..CPI., na.rm = TRUE) - min(Consumer.Price.Index..CPI., na.rm = TRUE))
+    ) %>%
+    select(Fecha, GDP_normalized, CPI_normalized) %>%
+    pivot_longer(cols = -Fecha, names_to = "Variable", values_to = "Valor") %>%
+    mutate(
+      Variable = ifelse(Variable == "GDP_normalized", "PIB (normalizado)", "IPC (normalizado)")
+    )
+  
+  comparacion_plot <- ggplot(comparacion_data, aes(x = Fecha, y = Valor, color = Variable)) +
+    geom_line(size = 1.2, alpha = 0.8) +
+    labs(
+      title = "Comparación PIB vs IPC - Italia",
+      subtitle = "Ambas variables normalizadas para comparación",
+      x = "Fecha",
+      y = "Valor Normalizado (0-1)",
+      color = "Variable"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12, face = "bold"),
+      legend.position = "bottom",
+      panel.grid.major = element_line(color = "gray90", size = 0.2),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    ) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02)) +
+    scale_color_manual(values = c("PIB (normalizado)" = "#2E86AB", "IPC (normalizado)" = "#A23B72"))
+  
+  print(comparacion_plot)
+  cat("✓ Gráfico comparativo GDP vs CPI creado y mostrado\n")
+  
+} else {
+  cat("✗ No se pueden crear gráficos comparativos - faltan variables\n")
+}
+
+# 4. GRÁFICOS DE PORCENTAJES DE CAMBIO TRIMESTRAL (si existen)
+cat("\n=== GRÁFICOS 4-5: PORCENTAJES DE CAMBIO TRIMESTRAL ===\n")
+
+# Gráfico del porcentaje de cambio del GDP
+if("PIB_pct_cambio" %in% names(italia_plot_data)) {
+  
+  pib_pct_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = PIB_pct_cambio)) +
+    geom_ribbon(aes(ymin = 0, ymax = ifelse(PIB_pct_cambio > 0, PIB_pct_cambio, 0)),
+                fill = "#2E86AB", alpha = 0.2) +
+    geom_ribbon(aes(ymin = ifelse(PIB_pct_cambio < 0, PIB_pct_cambio, 0), ymax = 0),
+                fill = "#A23B72", alpha = 0.2) +
+    geom_line(color = "#2E86AB", size = 1.2) +
+    geom_point(color = "#2E86AB", size = 2, alpha = 0.8) +
+    geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+    labs(
+      title = "Crecimiento Trimestral del PIB - Italia",
+      subtitle = "Porcentaje de cambio trimestral del PIB",
+      x = "Fecha",
+      y = "Crecimiento Trimestral (%)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    ) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    scale_y_continuous(labels = function(x) paste0(x, "%"))
+  
+  print(pib_pct_plot)
+  cat("✓ Gráfico de porcentaje de cambio del GDP creado y mostrado\n")
+}
+
+# Gráfico del porcentaje de cambio del CPI
+if("IPC_pct_cambio" %in% names(italia_plot_data)) {
+  
+  cpi_pct_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = IPC_pct_cambio)) +
+    geom_ribbon(aes(ymin = 0, ymax = ifelse(IPC_pct_cambio > 0, IPC_pct_cambio, 0)),
+                fill = "#2E86AB", alpha = 0.2) +
+    geom_ribbon(aes(ymin = ifelse(IPC_pct_cambio < 0, IPC_pct_cambio, 0), ymax = 0),
+                fill = "#A23B72", alpha = 0.2) +
+    geom_line(color = "#A23B72", size = 1.2) +
+    geom_point(color = "#A23B72", size = 2, alpha = 0.8) +
+    geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+    labs(
+      title = "Inflación Trimestral - Italia",
+      subtitle = "Porcentaje de cambio trimestral del IPC",
+      x = "Fecha",
+      y = "Inflación Trimestral (%)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    ) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    scale_y_continuous(labels = function(x) paste0(x, "%"))
+  
+  print(cpi_pct_plot)
+  cat("✓ Gráfico de porcentaje de cambio del CPI creado y mostrado\n")
+}
+
+# RESUMEN ESTADÍSTICO DE GDP E INFLACIÓN
+cat("\n=== RESUMEN ESTADÍSTICO: GDP E INFLACIÓN ===\n")
+
+resumen_gdp_cpi <- data.frame()
+
+if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
+  gdp_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "PIB",
+      Media = round(mean(GDP.billion.currency.units, na.rm = TRUE), 4),
+      Mediana = round(median(GDP.billion.currency.units, na.rm = TRUE), 4),
+      Desviacion = round(sd(GDP.billion.currency.units, na.rm = TRUE), 4),
+      Minimo = round(min(GDP.billion.currency.units, na.rm = TRUE), 4),
+      Maximo = round(max(GDP.billion.currency.units, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(GDP.billion.currency.units))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, gdp_summary)
+}
+
+if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
+  cpi_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "IPC",
+      Media = round(mean(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
+      Mediana = round(median(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
+      Desviacion = round(sd(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
+      Minimo = round(min(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
+      Maximo = round(max(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Consumer.Price.Index..CPI.))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, cpi_summary)
+}
+
+if("PIB_pct_cambio" %in% names(italia_plot_data)) {
+  gdp_pct_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "Crecimiento PIB Trimestral (%)",
+      Media = round(mean(PIB_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(PIB_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(PIB_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(PIB_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(PIB_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(PIB_pct_cambio))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, gdp_pct_summary)
+}
+
+if("IPC_pct_cambio" %in% names(italia_plot_data)) {
+  cpi_pct_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "Inflación Trimestral (%)",
+      Media = round(mean(IPC_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(IPC_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(IPC_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(IPC_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(IPC_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(IPC_pct_cambio))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, cpi_pct_summary)
+}
+
+print(resumen_gdp_cpi)
+
+cat("\n=== PROCESO COMPLETADO ===\n")
+cat("✓ Gráficos específicos de GDP e inflación creados\n")
+cat("✓ Resumen estadístico generado\n")
