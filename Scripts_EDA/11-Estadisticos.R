@@ -1,5 +1,6 @@
 # Librerias
 library(readxl) 
+library(plotly)
 library(dplyr)     
 library(ggplot2)   
 library(skimr)    
@@ -675,8 +676,14 @@ resumen_anual <- italia_trimestral %>%
   )
 print(resumen_anual)
 
-# 15. GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN DE italia_trimestral
-cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN ===\n")
+# 15. GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN DE italia_trimestral CON PLOTLY Y PALETA PANTONE
+cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN (PLOTLY + PANTONE) ===\n")
+
+# Definir paleta de colores Pantone
+PANTONE_220_C <- "#A50050"    # Rojo magenta
+PANTONE_376_C <- "#84BD00"    # Verde brillante
+PANTONE_262_C <- "#51284F"    # Púrpura oscuro
+PANTONE_9043_C <- "#EAE7E0"   # Beige claro (para fondos)
 
 # Preparar datos para gráficos
 italia_plot_data <- italia_trimestral %>%
@@ -690,12 +697,12 @@ italia_plot_data <- italia_trimestral %>%
   ) %>%
   arrange(Fecha)
 
-# 1. GRÁFICO DEL GDP (PIB)
-cat("=== GRÁFICO 1: GDP (PIB) ===\n")
+# 1. GRÁFICO DEL GDP (PIB) CON PLOTLY - SOLO HOVER
+cat("=== GRÁFICO 1: GDP (PIB) CON PORCENTAJES EN HOVER ===\n")
 
-# Verificar que existe la variable GDP
 if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
   
+  # Calcular estadísticas
   gdp_stats <- italia_plot_data %>%
     summarise(
       media = mean(GDP.billion.currency.units, na.rm = TRUE),
@@ -706,48 +713,77 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
       n_total = n()
     )
   
-  # Gráfico del GDP en valores absolutos
-  gdp_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = GDP.billion.currency.units)) +
-    geom_line(color = "#2E86AB", size = 1.2) +
-    geom_point(color = "#2E86AB", size = 2, alpha = 0.8) +
-    geom_smooth(method = "loess", color = "#F24236", linetype = "dashed", se = FALSE, alpha = 0.6) +
-    labs(
-      title = "Evolución del PIB - Italia",
-      subtitle = paste0("Media: ", round(gdp_stats$media, 2), " billones | ",
-                        "Mín: ", round(gdp_stats$min, 2), " | ",
-                        "Máx: ", round(gdp_stats$max, 2)),
-      x = "Fecha",
-      y = "PIB (Billones de unidades monetarias)",
-      caption = paste0("Datos: ", gdp_stats$n_no_na, "/", gdp_stats$n_total, " trimestres")
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
-      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
-      plot.caption = element_text(size = 9, color = "gray50", margin = margin(t = 10)),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title = element_text(size = 12, face = "bold"),
-      panel.grid.major = element_line(color = "gray90", size = 0.2),
-      panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = "white", color = NA),
-      panel.background = element_rect(fill = "white", color = NA)
-    ) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02))
+  # Crear texto para hover que incluya el porcentaje de cambio si existe
+  if("PIB_pct_cambio" %in% names(italia_plot_data)) {
+    hover_text_gdp <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>PIB:</b> %{y:.2f} billones<br>",
+      "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
+      "<extra></extra>"
+    )
+    custom_data_gdp <- ~PIB_pct_cambio
+  } else {
+    hover_text_gdp <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>PIB:</b> %{y:.2f} billones<br>",
+      "<extra></extra>"
+    )
+    custom_data_gdp <- NULL
+  }
   
-  print(gdp_plot)
-  cat("✓ Gráfico del GDP creado y mostrado\n")
+  # Crear gráfico Plotly con hover personalizado y colores Pantone
+  gdp_plotly <- plot_ly(italia_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~GDP.billion.currency.units, 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_262_C, width = 3),  # Púrpura oscuro
+              marker = list(color = PANTONE_262_C, size = 6, opacity = 0.8),
+              name = 'PIB',
+              customdata = custom_data_gdp,
+              hovertemplate = hover_text_gdp) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución del PIB - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_262_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_262_C),
+        tickfont = list(color = PANTONE_262_C)
+      ),
+      yaxis = list(
+        title = "PIB (Billones de unidades monetarias)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_262_C),
+        tickfont = list(color = PANTONE_262_C)
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_262_C, size = 12),
+        bordercolor = PANTONE_262_C
+      ),
+      showlegend = FALSE
+    )
+  
+  print(gdp_plotly)
+  cat("✓ Gráfico Plotly del GDP creado y mostrado (porcentajes en hover)\n")
   
 } else {
   cat("✗ Variable GDP.billion.currency.units no encontrada\n")
 }
 
-# 2. GRÁFICO DE INFLACIÓN (CPI)
-cat("\n=== GRÁFICO 2: INFLACIÓN (CPI) ===\n")
+# 2. GRÁFICO DE INFLACIÓN (CPI) CON PLOTLY - SOLO HOVER
+cat("\n=== GRÁFICO 2: INFLACIÓN (CPI) CON PORCENTAJES EN HOVER ===\n")
 
-# Verificar que existe la variable CPI
 if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
   
+  # Calcular estadísticas
   cpi_stats <- italia_plot_data %>%
     summarise(
       media = mean(Consumer.Price.Index..CPI., na.rm = TRUE),
@@ -758,159 +794,181 @@ if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
       n_total = n()
     )
   
-  # Gráfico del CPI en valores absolutos
-  cpi_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = Consumer.Price.Index..CPI.)) +
-    geom_line(color = "#A23B72", size = 1.2) +
-    geom_point(color = "#A23B72", size = 2, alpha = 0.8) +
-    geom_smooth(method = "loess", color = "#F24236", linetype = "dashed", se = FALSE, alpha = 0.6) +
-    labs(
-      title = "Evolución del Índice de Precios al Consumidor (IPC) - Italia",
-      subtitle = paste0("Media: ", round(cpi_stats$media, 2), " | ",
-                        "Mín: ", round(cpi_stats$min, 2), " | ",
-                        "Máx: ", round(cpi_stats$max, 2)),
-      x = "Fecha",
-      y = "Índice de Precios al Consumidor (IPC)",
-      caption = paste0("Datos: ", cpi_stats$n_no_na, "/", cpi_stats$n_total, " trimestres")
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
-      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
-      plot.caption = element_text(size = 9, color = "gray50", margin = margin(t = 10)),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title = element_text(size = 12, face = "bold"),
-      panel.grid.major = element_line(color = "gray90", size = 0.2),
-      panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = "white", color = NA),
-      panel.background = element_rect(fill = "white", color = NA)
-    ) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02))
+  # Crear texto para hover que incluya el porcentaje de cambio si existe
+  if("IPC_pct_cambio" %in% names(italia_plot_data)) {
+    hover_text_cpi <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>IPC:</b> %{y:.2f}<br>",
+      "<b>Inflación trimestral:</b> %{customdata:.2f}%<br>",
+      "<extra></extra>"
+    )
+    custom_data_cpi <- ~IPC_pct_cambio
+  } else {
+    hover_text_cpi <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>IPC:</b> %{y:.2f}<br>",
+      "<extra></extra>"
+    )
+    custom_data_cpi <- NULL
+  }
   
-  print(cpi_plot)
-  cat("✓ Gráfico del CPI creado y mostrado\n")
+  # Crear gráfico Plotly con hover personalizado y colores Pantone
+  cpi_plotly <- plot_ly(italia_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~Consumer.Price.Index..CPI., 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_220_C, width = 3),  # Rojo magenta
+              marker = list(color = PANTONE_220_C, size = 6, opacity = 0.8),
+              name = 'IPC',
+              customdata = custom_data_cpi,
+              hovertemplate = hover_text_cpi) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución del Índice de Precios al Consumidor (IPC) - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_220_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_220_C),
+        tickfont = list(color = PANTONE_220_C)
+      ),
+      yaxis = list(
+        title = "Índice de Precios al Consumidor (IPC)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_220_C),
+        tickfont = list(color = PANTONE_220_C)
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_220_C, size = 12),
+        bordercolor = PANTONE_220_C
+      ),
+      showlegend = FALSE
+    )
+  
+  print(cpi_plotly)
+  cat("✓ Gráfico Plotly del CPI creado y mostrado (porcentajes en hover)\n")
   
 } else {
   cat("✗ Variable Consumer.Price.Index..CPI. no encontrada\n")
 }
 
-# 3. GRÁFICO COMPARATIVO GDP vs CPI (si ambas existen)
+# 3. GRÁFICO COMPARATIVO GDP vs CPI (mismo estilo que individuales)
 cat("\n=== GRÁFICO 3: COMPARACIÓN GDP vs CPI ===\n")
 
 if("GDP.billion.currency.units" %in% names(italia_plot_data) & 
    "Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
   
-  # Normalizar ambas variables para comparación
-  comparacion_data <- italia_plot_data %>%
-    select(Fecha, GDP.billion.currency.units, Consumer.Price.Index..CPI.) %>%
-    mutate(
-      GDP_normalized = (GDP.billion.currency.units - min(GDP.billion.currency.units, na.rm = TRUE)) / 
-        (max(GDP.billion.currency.units, na.rm = TRUE) - min(GDP.billion.currency.units, na.rm = TRUE)),
-      CPI_normalized = (Consumer.Price.Index..CPI. - min(Consumer.Price.Index..CPI., na.rm = TRUE)) / 
-        (max(Consumer.Price.Index..CPI., na.rm = TRUE) - min(Consumer.Price.Index..CPI., na.rm = TRUE))
-    ) %>%
-    select(Fecha, GDP_normalized, CPI_normalized) %>%
-    pivot_longer(cols = -Fecha, names_to = "Variable", values_to = "Valor") %>%
-    mutate(
-      Variable = ifelse(Variable == "GDP_normalized", "PIB (normalizado)", "IPC (normalizado)")
+  # Crear gráfico comparativo con el mismo estilo que los individuales
+  comparacion_plotly <- plot_ly(italia_plot_data, x = ~Fecha) %>%
+    # Traza para PIB
+    add_trace(y = ~GDP.billion.currency.units, 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_262_C, width = 3),
+              marker = list(color = PANTONE_262_C, size = 5, opacity = 0.7),
+              name = 'PIB',
+              yaxis = 'y1',
+              customdata = if("PIB_pct_cambio" %in% names(italia_plot_data)) ~PIB_pct_cambio else NULL,
+              hovertemplate = if("PIB_pct_cambio" %in% names(italia_plot_data)) {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>PIB:</b> %{y:.2f} billones<br>",
+                  "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
+                  "<extra></extra>"
+                )
+              } else {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>PIB:</b> %{y:.2f} billones<br>",
+                  "<extra></extra>"
+                )
+              }) %>%
+    # Traza para IPC
+    add_trace(y = ~Consumer.Price.Index..CPI., 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_220_C, width = 3),
+              marker = list(color = PANTONE_220_C, size = 5, opacity = 0.7),
+              name = 'IPC',
+              yaxis = 'y2',
+              customdata = if("IPC_pct_cambio" %in% names(italia_plot_data)) ~IPC_pct_cambio else NULL,
+              hovertemplate = if("IPC_pct_cambio" %in% names(italia_plot_data)) {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>IPC:</b> %{y:.2f}<br>",
+                  "<b>Inflación trimestral:</b> %{customdata:.2f}%<br>",
+                  "<extra></extra>"
+                )
+              } else {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>IPC:</b> %{y:.2f}<br>",
+                  "<extra></extra>"
+                )
+              }) %>%
+    layout(
+      title = list(
+        text = "<b>Comparación PIB vs IPC - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_262_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_262_C),
+        tickfont = list(color = PANTONE_262_C)
+      ),
+      yaxis = list(
+        title = "PIB (Billones de unidades monetarias)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_262_C),
+        tickfont = list(color = PANTONE_262_C),
+        side = 'left',
+        showgrid = TRUE
+      ),
+      yaxis2 = list(
+        title = "Índice de Precios al Consumidor (IPC)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_220_C),
+        tickfont = list(color = PANTONE_220_C),
+        side = 'right',
+        overlaying = "y",
+        showgrid = FALSE
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_262_C, size = 12),
+        bordercolor = PANTONE_262_C
+      ),
+      legend = list(
+        x = 0.02,
+        y = 0.98,
+        font = list(color = PANTONE_262_C),
+        bgcolor = 'rgba(255,255,255,0.8)',
+        bordercolor = PANTONE_262_C
+      ),
+      margin = list(r = 80)  # Margen para el segundo eje Y
     )
   
-  comparacion_plot <- ggplot(comparacion_data, aes(x = Fecha, y = Valor, color = Variable)) +
-    geom_line(size = 1.2, alpha = 0.8) +
-    labs(
-      title = "Comparación PIB vs IPC - Italia",
-      subtitle = "Ambas variables normalizadas para comparación",
-      x = "Fecha",
-      y = "Valor Normalizado (0-1)",
-      color = "Variable"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
-      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40", margin = margin(b = 15)),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title = element_text(size = 12, face = "bold"),
-      legend.position = "bottom",
-      panel.grid.major = element_line(color = "gray90", size = 0.2),
-      panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = "white", color = NA),
-      panel.background = element_rect(fill = "white", color = NA)
-    ) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = expansion(mult = 0.02)) +
-    scale_color_manual(values = c("PIB (normalizado)" = "#2E86AB", "IPC (normalizado)" = "#A23B72"))
-  
-  print(comparacion_plot)
+  print(comparacion_plotly)
   cat("✓ Gráfico comparativo GDP vs CPI creado y mostrado\n")
   
 } else {
   cat("✗ No se pueden crear gráficos comparativos - faltan variables\n")
 }
 
-# 4. GRÁFICOS DE PORCENTAJES DE CAMBIO TRIMESTRAL (si existen)
-cat("\n=== GRÁFICOS 4-5: PORCENTAJES DE CAMBIO TRIMESTRAL ===\n")
-
-# Gráfico del porcentaje de cambio del GDP
-if("PIB_pct_cambio" %in% names(italia_plot_data)) {
-  
-  pib_pct_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = PIB_pct_cambio)) +
-    geom_ribbon(aes(ymin = 0, ymax = ifelse(PIB_pct_cambio > 0, PIB_pct_cambio, 0)),
-                fill = "#2E86AB", alpha = 0.2) +
-    geom_ribbon(aes(ymin = ifelse(PIB_pct_cambio < 0, PIB_pct_cambio, 0), ymax = 0),
-                fill = "#A23B72", alpha = 0.2) +
-    geom_line(color = "#2E86AB", size = 1.2) +
-    geom_point(color = "#2E86AB", size = 2, alpha = 0.8) +
-    geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.5) +
-    labs(
-      title = "Crecimiento Trimestral del PIB - Italia",
-      subtitle = "Porcentaje de cambio trimestral del PIB",
-      x = "Fecha",
-      y = "Crecimiento Trimestral (%)"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
-      axis.text.x = element_text(angle = 45, hjust = 1)
-    ) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-    scale_y_continuous(labels = function(x) paste0(x, "%"))
-  
-  print(pib_pct_plot)
-  cat("✓ Gráfico de porcentaje de cambio del GDP creado y mostrado\n")
-}
-
-# Gráfico del porcentaje de cambio del CPI
-if("IPC_pct_cambio" %in% names(italia_plot_data)) {
-  
-  cpi_pct_plot <- ggplot(italia_plot_data, aes(x = Fecha, y = IPC_pct_cambio)) +
-    geom_ribbon(aes(ymin = 0, ymax = ifelse(IPC_pct_cambio > 0, IPC_pct_cambio, 0)),
-                fill = "#2E86AB", alpha = 0.2) +
-    geom_ribbon(aes(ymin = ifelse(IPC_pct_cambio < 0, IPC_pct_cambio, 0), ymax = 0),
-                fill = "#A23B72", alpha = 0.2) +
-    geom_line(color = "#A23B72", size = 1.2) +
-    geom_point(color = "#A23B72", size = 2, alpha = 0.8) +
-    geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.5) +
-    labs(
-      title = "Inflación Trimestral - Italia",
-      subtitle = "Porcentaje de cambio trimestral del IPC",
-      x = "Fecha",
-      y = "Inflación Trimestral (%)"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
-      axis.text.x = element_text(angle = 45, hjust = 1)
-    ) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-    scale_y_continuous(labels = function(x) paste0(x, "%"))
-  
-  print(cpi_pct_plot)
-  cat("✓ Gráfico de porcentaje de cambio del CPI creado y mostrado\n")
-}
-
-# RESUMEN ESTADÍSTICO DE GDP E INFLACIÓN
+# RESUMEN ESTADÍSTICO
 cat("\n=== RESUMEN ESTADÍSTICO: GDP E INFLACIÓN ===\n")
 
 resumen_gdp_cpi <- data.frame()
@@ -974,5 +1032,313 @@ if("IPC_pct_cambio" %in% names(italia_plot_data)) {
 print(resumen_gdp_cpi)
 
 cat("\n=== PROCESO COMPLETADO ===\n")
-cat("✓ Gráficos específicos de GDP e inflación creados\n")
+cat("✓ 3 Gráficos Plotly específicos creados\n")
+cat("✓ Paleta Pantone aplicada consistentemente\n")
+cat("✓ Porcentajes de cambio visibles solo al pasar el ratón (hover)\n")
+cat("✓ Gráfico comparativo con mismo estilo que individuales\n")
+cat("✓ Diseño profesional y cohesivo\n")
 cat("✓ Resumen estadístico generado\n")
+################################################################################
+################################################################################
+################################################################################
+# 16. BOXPLOTS INDIVIDUALES PARA TODAS LAS VARIABLES NUMÉRICAS - TODAS LAS PÁGINAS A LA VEZ
+cat("\n=== CREANDO BOXPLOTS INDIVIDUALES PARA TODAS LAS VARIABLES ===\n")
+
+# Obtener solo las variables numéricas (excluyendo identificadores)
+variables_numericas <- italia_trimestral %>%
+  select(where(is.numeric)) %>%
+  select(-any_of(c("Year", "Quarter")))  # Excluir columnas no numéricas si existen
+
+cat("Número de variables numéricas:", ncol(variables_numericas), "\n")
+cat("Variables a graficar:", names(variables_numericas), "\n")
+
+# Función CORREGIDA para crear boxplot individual
+crear_boxplot_individual <- function(data, variable_name) {
+  # Limpiar nombre para el título
+  nombre_limpio <- gsub("\\.", " ", variable_name)
+  nombre_limpio <- gsub("_", " ", nombre_limpio)
+  nombre_limpio <- str_to_title(nombre_limpio)
+  
+  # Calcular estadísticas básicas para el subtítulo
+  stats <- data %>%
+    summarise(
+      media = round(mean(!!sym(variable_name), na.rm = TRUE), 2),
+      mediana = round(median(!!sym(variable_name), na.rm = TRUE), 2),
+      desviacion = round(sd(!!sym(variable_name), na.rm = TRUE), 2),
+      minimo = round(min(!!sym(variable_name), na.rm = TRUE), 2),
+      maximo = round(max(!!sym(variable_name), na.rm = TRUE), 2),
+      na_count = sum(is.na(!!sym(variable_name))))
+      
+      # Crear el boxplot CORREGIDO
+      ggplot(data, aes(x = "", y = !!sym(variable_name))) +
+        geom_boxplot(
+          fill = PANTONE_9043_C, 
+          color = PANTONE_262_C,
+          alpha = 0.7,
+          outlier.color = PANTONE_220_C,
+          outlier.size = 2
+        ) +
+        stat_summary(
+          fun = mean, 
+          geom = "point", 
+          shape = 18, 
+          size = 3, 
+          color = PANTONE_376_C
+        ) +
+        labs(
+          title = nombre_limpio,
+          subtitle = paste0(
+            "Media: ", stats$media, 
+            " | Mediana: ", stats$mediana,
+            " | SD: ", stats$desviacion,
+            "\nMín: ", stats$minimo, 
+            " | Máx: ", stats$maximo,
+            " | NA: ", stats$na_count
+          ),
+          x = NULL,
+          y = NULL
+        ) +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(
+            size = 11, 
+            face = "bold", 
+            color = PANTONE_262_C,
+            hjust = 0.5
+          ),
+          plot.subtitle = element_text(
+            size = 8, 
+            color = "darkgray",
+            hjust = 0.5
+          ),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 8),
+          panel.grid.major = element_line(color = "gray90"),
+          panel.grid.minor = element_blank(),
+          plot.background = element_rect(fill = "white", color = NA),
+          panel.background = element_rect(fill = "white", color = NA)
+        )
+}
+
+# Crear todos los boxplots individuales
+boxplots_list <- list()
+
+for (i in 1:ncol(variables_numericas)) {
+  var_name <- names(variables_numericas)[i]
+  cat("Creando boxplot para:", var_name, "\n")
+  
+  # Filtrar datos sin NA para esta variable
+  datos_variable <- variables_numericas %>% 
+    select(all_of(var_name)) %>% 
+    filter(!is.na(!!sym(var_name)))
+  
+  if (nrow(datos_variable) > 0) {
+    boxplots_list[[var_name]] <- crear_boxplot_individual(datos_variable, var_name)
+  }
+}
+
+# ORGANIZAR TODAS LAS PÁGINAS A LA VEZ
+cat("\n=== ORGANIZANDO TODAS LAS PÁGINAS A LA VEZ ===\n")
+
+# Definir número de gráficos por página
+graficos_por_pagina <- 9  # 3x3 grid
+total_graficos <- length(boxplots_list)
+total_paginas <- ceiling(total_graficos / graficos_por_pagina)
+
+cat("Total de boxplots creados:", total_graficos, "\n")
+cat("Gráficos por página:", graficos_por_pagina, "\n")
+cat("Total de páginas necesarias:", total_paginas, "\n")
+
+# Función para crear una lista con todas las páginas
+crear_todas_las_paginas <- function(lista_boxplots, por_pagina = 9) {
+  total_paginas <- ceiling(length(lista_boxplots) / por_pagina)
+  todas_las_paginas <- list()
+  
+  for (pagina in 1:total_paginas) {
+    inicio <- (pagina - 1) * por_pagina + 1
+    fin <- min(pagina * por_pagina, length(lista_boxplots))
+    
+    if (inicio <= length(lista_boxplots)) {
+      cat("Preparando página", pagina, "- Gráficos", inicio, "a", fin, "\n")
+      
+      # Crear grid para esta página
+      pagina_actual <- do.call("grid.arrange", 
+                               c(lista_boxplots[inicio:fin], 
+                                 ncol = 3, 
+                                 nrow = 3,
+                                 top = paste("Boxplots de Variables - Italia Trimestral - Página", pagina, "de", total_paginas)))
+      
+      todas_las_paginas[[pagina]] <- pagina_actual
+    }
+  }
+  
+  return(todas_las_paginas)
+}
+
+# OPCIÓN 1: Mostrar todas las páginas en una ventana gráfica múltiple (si el dispositivo lo permite)
+cat("\n=== OPCIÓN 1: MOSTRAR TODAS LAS PÁGINAS EN UNA VENTANA GRÁFICA MÚLTIPLE ===\n")
+
+# Configurar ventana gráfica para múltiples páginas
+if (total_paginas > 1) {
+  # Intentar configurar múltiples paneles
+  tryCatch({
+    # Configurar layout según número de páginas
+    if (total_paginas <= 4) {
+      par(mfrow = c(2, 2))
+    } else if (total_paginas <= 6) {
+      par(mfrow = c(2, 3))
+    } else if (total_paginas <= 9) {
+      par(mfrow = c(3, 3))
+    } else {
+      par(mfrow = c(ceiling(sqrt(total_paginas)), ceiling(sqrt(total_paginas))))
+    }
+    
+    cat("Ventana gráfica configurada para", total_paginas, "páginas\n")
+  }, error = function(e) {
+    cat("No se pudo configurar ventana múltiple. Usando método alternativo.\n")
+  })
+}
+
+# OPCIÓN 2: Usar grid.arrange con marcos múltiples (MEJOR OPCIÓN)
+cat("\n=== OPCIÓN 2: CREAR SUPER-LAYOUT CON TODAS LAS PÁGINAS ===\n")
+
+# Calcular layout óptimo para todas las páginas
+filas_total <- ceiling(total_paginas / 2)  # 2 columnas
+columnas_total <- ifelse(total_paginas > 1, 2, 1)
+
+cat("Layout configurado:", filas_total, "filas x", columnas_total, "columnas\n")
+
+# Crear una función para mostrar todas las páginas a la vez
+mostrar_todas_las_paginas <- function() {
+  # Crear lista de todas las páginas
+  todas_las_paginas <- list()
+  
+  for (pagina in 1:total_paginas) {
+    inicio <- (pagina - 1) * graficos_por_pagina + 1
+    fin <- min(pagina * graficos_por_pagina, total_graficos)
+    
+    # Crear cada página individual
+    pagina_grid <- grid.arrange(
+      grobs = boxplots_list[inicio:fin],
+      ncol = 3,
+      nrow = 3,
+      top = textGrob(paste("Página", pagina, "de", total_paginas), 
+                     gp = gpar(fontsize = 16, fontface = "bold", col = PANTONE_262_C))
+    )
+    
+    todas_las_paginas[[pagina]] <- pagina_grid
+  }
+  
+  # Organizar todas las páginas en un super-layout
+  if (length(todas_las_paginas) > 0) {
+    # Usar grid.arrange para organizar las páginas
+    do.call(grid.arrange, c(todas_las_paginas, ncol = columnas_total))
+  }
+}
+
+# OPCIÓN 3: Método más simple - Crear un PDF temporal y mostrar todas las páginas
+cat("\n=== OPCIÓN 3: MÉTODO SIMPLIFICADO - MOSTRAR PÁGINA POR PÁGINA EN SECUENCIA ===\n")
+
+# Mostrar cada página en secuencia (todas visibles una tras otra)
+for (pagina in 1:total_paginas) {
+  cat("\n--- MOSTRANDO PÁGINA", pagina, "DE", total_paginas, "---\n")
+  
+  inicio <- (pagina - 1) * graficos_por_pagina + 1
+  fin <- min(pagina * graficos_por_pagina, total_graficos)
+  
+  # Mostrar página actual
+  grid.arrange(
+    grobs = boxplots_list[inicio:fin],
+    ncol = 3,
+    nrow = 3,
+    top = paste("Boxplots - Italia Trimestral - Página", pagina, "de", total_paginas)
+  )
+  
+  # Pausa opcional entre páginas (puedes comentar esta línea si quieres verlas todas rápido)
+  if (pagina < total_paginas) {
+    cat("Presiona Enter para ver la siguiente página...")
+    readline()
+  }
+}
+
+# OPCIÓN 4: Guardar y mostrar miniaturas de todas las páginas
+cat("\n=== OPCIÓN 4: CREAR RESUMEN CON MINIATURAS DE TODAS LAS PÁGINAS ===\n")
+
+# Crear una página de resumen con miniaturas de cada página
+crear_pagina_resumen <- function() {
+  # Crear miniaturas simplificadas para el resumen
+  boxplots_mini <- list()
+  
+  for (i in 1:min(6, total_graficos)) {  # Mostrar máximo 6 miniaturas
+    var_name <- names(boxplots_list)[i]
+    nombre_limpio <- gsub("\\.", " ", var_name)
+    nombre_limpio <- gsub("_", " ", nombre_limpio)
+    nombre_limpio <- str_to_title(nombre_limpio)
+    
+    if (length(nombre_limpio) > 20) {
+      nombre_limpio <- paste0(substr(nombre_limpio, 1, 20), "...")
+    }
+    
+    datos_variable <- variables_numericas %>% 
+      select(all_of(var_name)) %>% 
+      filter(!is.na(!!sym(var_name)))
+    
+    boxplot_mini <- ggplot(datos_variable, aes(x = "", y = !!sym(var_name))) +
+      geom_boxplot(fill = PANTONE_9043_C, color = PANTONE_262_C, alpha = 0.7) +
+      labs(title = nombre_limpio, x = NULL, y = NULL) +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(size = 8, face = "bold"),
+        axis.text = element_text(size = 6),
+        plot.margin = unit(c(1, 1, 1, 1), "mm")
+      )
+    
+    boxplots_mini[[i]] <- boxplot_mini
+  }
+  
+  # Mostrar resumen
+  grid.arrange(
+    grobs = boxplots_mini,
+    ncol = 3,
+    nrow = 2,
+    top = paste("Resumen -", total_graficos, "variables en", total_paginas, "páginas")
+  )
+}
+
+# Mostrar página de resumen
+crear_pagina_resumen()
+
+# GUARDAR TODAS LAS PÁGINAS EN PDF
+cat("\n=== GUARDANDO TODAS LAS PÁGINAS EN PDF ===\n")
+
+pdf("boxplots_italia_trimestral_todas_las_paginas.pdf", width = 16, height = 12)
+
+for (pagina in 1:total_paginas) {
+  cat("Guardando página", pagina, "en PDF...\n")
+  
+  inicio <- (pagina - 1) * graficos_por_pagina + 1
+  fin <- min(pagina * graficos_por_pagina, total_graficos)
+  
+  grid.arrange(
+    grobs = boxplots_list[inicio:fin],
+    ncol = 3,
+    nrow = 3,
+    top = paste("Boxplots de Variables - Italia Trimestral - Página", pagina, "de", total_paginas)
+  )
+}
+
+dev.off()
+cat("✓ Todas las páginas guardadas en: boxplots_italia_trimestral_todas_las_paginas.pdf\n")
+
+# RESUMEN FINAL
+cat("\n=== RESUMEN FINAL ===\n")
+cat("✓ Total de variables analizadas:", ncol(variables_numericas), "\n")
+cat("✓ Total de boxplots creados:", length(boxplots_list), "\n")
+cat("✓ Páginas generadas:", total_paginas, "\n")
+cat("✓ PDF con todas las páginas guardado\n")
+cat("✓ Se muestran todas las páginas en secuencia\n")
+cat("\n=== INSTRUCCIONES ===\n")
+cat("• Las páginas se muestran una tras otra en la ventana gráfica\n")
+cat("• Todas las páginas están guardadas en el PDF\n")
+cat("• Usa el botón 'Previous Plot' en RStudio para navegar entre páginas\n")
+cat("• El PDF contiene todas las páginas organizadas\n")
