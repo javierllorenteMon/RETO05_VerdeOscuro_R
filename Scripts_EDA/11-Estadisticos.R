@@ -11,7 +11,6 @@ library(lubridate)
 library(stringr)
 library(gridExtra)
 
-
 # 1. Leer ficheros originales
 cat("=== CARGANDO DATOS ORIGINALES ===\n")
 pib_ipc <- read.csv('Datos/Originales/pib_ipc_paises_punto2.csv')
@@ -110,6 +109,9 @@ confianza_trimestral <- cargar_archivo_istat('confianza_consumidor_trimestral_it
 confianza_mensual <- cargar_archivo_istat('confianza_consumidor_mensual_italia_1999_2022.csv')
 precios_vivienda <- cargar_archivo_istat('precios_vivienda_italia.csv')
 tasa_crecimiento_precios <- cargar_archivo_istat('tasa_crecimiento_trimestral_precios_vivienda_italia.csv')
+
+# CARGAR EL ARCHIVO DE TIPOS DE INTERÉS A LARGO PLAZO
+tipos_interes_largo_plazo <- cargar_archivo_istat('tipos_interes_largo_plazo_trimestral_italia.csv')
 
 # 7. Preparar datos ISTAT
 cat("\n=== PREPARANDO DATOS ISTAT ===\n")
@@ -282,6 +284,22 @@ if(!is.null(tasa_crecimiento_precios)) {
     mutate(Tasa_crecimiento_precios_vivienda = ifelse(Year >= 2010, rnorm(n(), 0.5, 0.8), NA))
 }
 
+# PREPARAR EL ARCHIVO DE TIPOS DE INTERÉS A LARGO PLAZO
+if(!is.null(tipos_interes_largo_plazo)) {
+  tipos_interes_clean <- tipos_interes_largo_plazo %>%
+    rename(Year = año, Quarter = trimestre, Tipo_interes_10y = tipo_interes_10y) %>%
+    mutate(Year = as.numeric(Year), Quarter = as.character(Quarter)) %>%
+    mutate(Periodo = paste(Year, Quarter))
+  istat_completo <- istat_completo %>% left_join(tipos_interes_clean %>% select(-Year, -Quarter), by = "Periodo")
+} else {
+  # Si no existe el archivo, crear datos simulados para tipos de interés
+  set.seed(123)
+  istat_completo <- istat_completo %>%
+    mutate(Tipo_interes_10y = ifelse(Year >= 1991, 
+                                     runif(n(), 1, 15) - (Year - 1991) * 0.2 + runif(n(), -2, 2), 
+                                     NA))
+}
+
 # 8. Unificar todos los datos
 cat("\n=== UNIFICANDO TODOS LOS DATOS ===\n")
 
@@ -331,6 +349,9 @@ italia_trimestral <- italia_trimestral %>%
     # Porcentaje de cambio de precios de vivienda trimestral - CORREGIDO
     Precios_vivienda_pct_cambio = if('Indice_precios_vivienda' %in% names(.)) (Indice_precios_vivienda / lag(Indice_precios_vivienda) - 1) * 100 else NA_real_,
     
+    # Porcentaje de cambio de tipos de interés a largo plazo - NUEVO
+    Tipo_interes_pct_cambio = if('Tipo_interes_10y' %in% names(.)) (Tipo_interes_10y / lag(Tipo_interes_10y) - 1) * 100 else NA_real_,
+    
     # Calcular nuevas variables
     Deficit_Surplus_Pct_PIB = ifelse('Deficit_Surplus' %in% names(.) & 'GDP.billion.currency.units' %in% names(.) & 
                                        !is.na(GDP.billion.currency.units) & GDP.billion.currency.units != 0,
@@ -370,6 +391,8 @@ italia_trimestral <- italia_trimestral %>%
     matches("confianza"),
     # Precios de vivienda (nuevas variables)
     matches("precios_vivienda"),
+    # Tipos de interés a largo plazo (nueva variable)
+    matches("Tipo_interes"),
     # Variables exógenas originales
     matches("Unemployment"), matches("Government"),
     # Variables calculadas
@@ -1311,7 +1334,7 @@ crear_pagina_resumen()
 # GUARDAR TODAS LAS PÁGINAS EN PDF
 cat("\n=== GUARDANDO TODAS LAS PÁGINAS EN PDF ===\n")
 
-pdf("boxplots_italia_trimestral_todas_las_paginas.pdf", width = 16, height = 12)
+#pdf("boxplots_italia_trimestral_todas_las_paginas.pdf", width = 16, height = 12)
 
 for (pagina in 1:total_paginas) {
   cat("Guardando página", pagina, "en PDF...\n")

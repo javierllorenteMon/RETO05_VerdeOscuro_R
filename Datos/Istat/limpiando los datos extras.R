@@ -373,13 +373,18 @@ write_csv(tasa_crecimiento_trimestral, "tasa_crecimiento_trimestral_precios_vivi
 #   - Valores ALTOS: Mayor costo financiero, política restrictiva
 #   - Valores BAJOS: Menor costo financiero, política expansiva
 
+library(tidyverse)
+library(janitor)
+
+# Leer datos
 tipos_interes <- read_delim("Datos/Istat/Rendimento lordo BTP decennale benchmark.csv", 
                             delim = ";", 
                             locale = locale(decimal_mark = ","))
+
+# Limpiar y transformar datos mensuales
 tipos_interes_italia <- tipos_interes %>%
-  clean_names() %>%
-  rename(fecha = `Data dell'osservazione`,
-         tipo_interes_10y = `Rendimento lordo BTP decennale benchmark`) %>%
+  # Renombrar columnas por posición (método más seguro)
+  rename(fecha = 1, tipo_interes_10y = 2) %>%
   mutate(
     fecha = as.Date(fecha, format = "%Y-%m-%d"),
     año = as.numeric(format(fecha, "%Y")),
@@ -407,5 +412,5 @@ tipos_interes_trimestral <- tipos_interes_italia %>%
   ) %>%
   arrange(año, trimestre)
 
-write_csv(tipos_interes_italia, "tipos_interes_largo_plazo_mensual_italia.csv")
+# Exportar resultados
 write_csv(tipos_interes_trimestral, "tipos_interes_largo_plazo_trimestral_italia.csv")
