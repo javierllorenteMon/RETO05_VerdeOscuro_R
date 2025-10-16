@@ -253,14 +253,89 @@ pred_tabla_q4 <- data.frame(
 )
 print(pred_tabla_q4)
 
-# ========== 7) ACCURACY (ELEGIR EL MEJOR) ==========
+# =====================================================================
+# 7) COMPARACIÓN FINAL DE ACCURACY Y SELECCIÓN DEL MEJOR MODELO (script original)
+# =====================================================================
+
+# Asegura longitudes y define h_test
+stopifnot(length(pred_IPC_revert_A) == length(test_IPC),
+          length(pred_IPC_revert_S) == length(test_IPC))
+h_test <- length(test_IPC)
+
+# Accuracy de ARIMA y SARIMA (predicciones ya revertidas a escala original)
 acc_arima  <- accuracy(pred_IPC_revert_A, test_IPC)
 acc_sarima <- accuracy(pred_IPC_revert_S, test_IPC)
 
-acc_arima
-acc_sarima
+cat("\n=== ACCURACY (ARIMA log+diff) ===\n");  print(acc_arima)
+cat("\n=== ACCURACY (SARIMA log+diff) ===\n"); print(acc_sarima)
 
-# (Opcional) Benchmarks:
-acc_naive  <- accuracy(naive(train_IPC,  h = h)$mean,  test_IPC)
-acc_snaive <- accuracy(snaive(train_IPC, h = h)$mean, test_IPC)
-acc_naive
+# Benchmarks (Naive y SNaive) sobre la serie en escala original
+acc_naive  <- accuracy(naive(train_IPC,  h = h_test)$mean,  test_IPC)
+acc_snaive <- accuracy(snaive(train_IPC, h = h_test)$mean, test_IPC)
+
+cat("\n=== Benchmarks (Naive y SNaive) ===\n")
+print(acc_naive); print(acc_snaive)
+
+# (Opcional) Test de Ljung–Box para residuales, si tienes los objetos de modelo
+lb_pval <- function(m, lag = 24){
+  k <- length(coef(m))
+  Box.test(residuals(m), lag = lag, type = "Ljung-Box", fitdf = k)$p.value
+}
+lb_arima  <- if (exists("modelo_IPC_Arima"))  lb_pval(modelo_IPC_Arima)  else NA
+lb_sarima <- if (exists("modelo_IPC_sarima")) lb_pval(modelo_IPC_sarima) else NA
+
+# Tabla resumen
+resumen <- data.frame(
+  Modelo = c("ARIMA log+diff", "SARIMA log+diff", "Naive", "SNaive"),
+  RMSE   = c(acc_arima["Test set","RMSE"],  acc_sarima["Test set","RMSE"],
+             acc_naive["Test set","RMSE"], acc_snaive["Test set","RMSE"]),
+  MAE    = c(acc_arima["Test set","MAE"],   acc_sarima["Test set","MAE"],
+             acc_naive["Test set","MAE"],   acc_snaive["Test set","MAE"]),
+  MAPE   = c(acc_arima["Test set","MAPE"],  acc_sarima["Test set","MAPE"],
+             acc_naive["Test set","MAPE"],  acc_snaive["Test set","MAPE"]),
+  LjungBox_p = c(lb_arima, lb_sarima, NA, NA)
+)
+cat("\n=== RESUMEN MODELOS (script original) ===\n"); print(resumen, row.names = FALSE)
+
+# Elegir automáticamente el mejor modelo por RMSE (entre ARIMA y SARIMA)
+rmse_vals <- c("ARIMA log+diff" = resumen$RMSE[resumen$Modelo=="ARIMA log+diff"],
+               "SARIMA log+diff"= resumen$RMSE[resumen$Modelo=="SARIMA log+diff"])
+
+best_model <- names(which.min(rmse_vals))
+best_rmse  <- min(rmse_vals)
+
+cat("# Mejor modelo según RMSE en TEST (script original):", best_model, "\n")
+cat("# RMSE:", round(best_rmse, 4), "\n")
+if (!is.na(lb_arima) || !is.na(lb_sarima)) {
+  cat("# Ljung-Box p-vals -> ARIMA:", round(lb_arima,4), "| SARIMA:", round(lb_sarima,4), "\n")
+}
+
+# Mejor modelo SARIMA: ARIMA(0,0,3)(1,1,1)[1] — (mejor accuracy)
+
+# =====================================================================
+# 8) MOSTRAR DETALLES DEL MEJOR MODELO (p,d,q)(P,D,Q)[m]
+# =====================================================================
+
+cat("#  DETALLE DEL MEJOR MODELO SEGÚN RMSE\n")
+
+# Si el mejor modelo fue SARIMA log+diff
+if (best_model == "SARIMA log+diff") {
+  orden <- modelo_IPC_sarima$arma
+  seasonal_period <- ifelse(length(orden) >= 7, orden[7], 0)
+  cat("# Mejor modelo SARIMA: ARIMA(",
+      orden[1], ",", orden[6], ",", orden[2], ")(",
+      orden[3], ",", orden[7], ",", orden[4], ")[",
+      seasonal_period, "] — (mejor accuracy)\n", sep = "")
+}
+
+# Si fue ARIMA normal
+if (best_model == "ARIMA log+diff") {
+  orden <- modelo_IPC_Arima$arma
+  seasonal_period <- ifelse(length(orden) >= 7, orden[7], 0)
+  cat("# Mejor modelo ARIMA: ARIMA(",
+      orden[1], ",", orden[6], ",", orden[2], ")(",
+      orden[3], ",", orden[7], ",", orden[4], ")[",
+      seasonal_period, "] — (mejor accuracy)\n", sep = "")
+}
+
+
