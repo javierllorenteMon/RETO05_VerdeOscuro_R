@@ -212,4 +212,205 @@ p2 <- ggplot(df_comp, aes(x = Fecha)) +
 # Mostrar ambos gráficos juntos
 grid.arrange(p1, p2, ncol = 1)
 
+# DEJO TODO COMENTADO YA QUE TARDA 1 HORA EN EJECUTAR HACEMOS UN READ ABAJO
+# 
+# # =============================
+# # VALIDACIÓN CRUZADA TEMPORAL (tsCV) — rolling origin (CORREGIDO)
+# # =============================
+# library(forecast)
+# 
+# H <- 12  # horizontes 1..12
+# 
+# # Funciones coherentes con tus modelos; DEVUELVEN OBJETO forecast (no el vector mean)
+# f_ARIMA1 <- function(y, h){
+#   fit <- tryCatch(
+#     auto.arima(y,
+#                lambda = lambda, biasadj = TRUE,
+#                seasonal = FALSE,
+#                stepwise = FALSE, approximation = FALSE,
+#                d = d),
+#     error = function(e) NULL
+#   )
+#   if (is.null(fit)) return(list(mean = rep(NA_real_, h)))  # estructura mínima compatible con tsCV
+#   forecast(fit, h = h)
+# }
+# 
+# f_ARIMA2 <- function(y, h){
+#   fit <- tryCatch(
+#     auto.arima(y,
+#                lambda = lambda, biasadj = TRUE,
+#                seasonal = FALSE,
+#                d = d, max.p = 6, max.q = 6,
+#                allowdrift = FALSE,
+#                stepwise = FALSE, approximation = FALSE),
+#     error = function(e) NULL
+#   )
+#   if (is.null(fit)) return(list(mean = rep(NA_real_, h)))
+#   forecast(fit, h = h)
+# }
+# 
+# f_SARIMA <- function(y, h){
+#   fit <- tryCatch(
+#     auto.arima(y,
+#                lambda = lambda, biasadj = TRUE,
+#                seasonal = TRUE,
+#                stepwise = FALSE, approximation = FALSE,
+#                d = d, D = D),
+#     error = function(e) NULL
+#   )
+#   if (is.null(fit)) return(list(mean = rep(NA_real_, h)))
+#   forecast(fit, h = h)
+# }
+# 
+# # Errores de CV por horizonte (solo sobre el TRAIN)
+# eA1 <- tsCV(train_IPC, f_ARIMA1, h = H)
+# eA2 <- tsCV(train_IPC, f_ARIMA2, h = H)
+# eSA <- tsCV(train_IPC, f_SARIMA, h = H)
+# 
+# # RMSE por horizonte y promedio 1..H
+# rmse_h <- function(e) sqrt(colMeans(e^2, na.rm = TRUE))
+# RMSE_cv <- rbind(
+#   ARIMA1 = rmse_h(eA1),
+#   ARIMA2 = rmse_h(eA2),
+#   SARIMA = rmse_h(eSA)
+# )
+# RMSE_cv_mean <- rowMeans(RMSE_cv, na.rm = TRUE)
+# 
+# # Resultados
+# cat("\n# === Validación cruzada temporal (tsCV) ===\n")
+# 
+# 
+# # (Opcional) detalle por horizonte
+# tmp <- round(RMSE_cv, 3); colnames(tmp) <- paste0("h", 1:H)
+# print(data.frame(Modelo = rownames(tmp), tmp), row.names = FALSE)
+# 
+# best_cv <- names(which.min(RMSE_cv_mean))
+# cat("# Mejor RMSE medio (1..", H, "): ", best_cv, " -> ",
+#     round(min(RMSE_cv_mean), 3), "\n", sep = "")
+# 
+# # =============================
+# # ARREGLAR EL PRINT + GUARDAR RESULTADOS DE tsCV
+# # =============================
+# 
+# # 1) Tablas limpias para imprimir
+# rmse_cols <- paste0("h", 1:H)
+# 
+# tabla_cv_mean <- data.frame(
+#   Modelo = rownames(RMSE_cv),
+#   RMSE_cv_mean = round(as.numeric(RMSE_cv_mean), 3),
+#   stringsAsFactors = FALSE
+# )
+# 
+# tmp <- as.data.frame(RMSE_cv, stringsAsFactors = FALSE)
+# colnames(tmp) <- rmse_cols
+# tmp_round <- as.data.frame(lapply(tmp, function(x) round(as.numeric(x), 3)))
+# tabla_cv_h <- cbind(Modelo = rownames(RMSE_cv), tmp_round)
+# 
+# # Combinar RMSE medio con RMSE por horizonte
+# tabla_cv_unificada <- merge(tabla_cv_mean, tabla_cv_h, by = "Modelo")
+# 
+# # RDS con todo (más compacto y fiel)
+# obj_validacion <- list(
+#   RMSE_cv = RMSE_cv,
+#   RMSE_cv_mean = RMSE_cv_mean,
+#   H = H,
+#   fecha = Sys.time()
+# )
+# saveRDS(obj_validacion, file = "Datos/transformados/IPC_validacion_tsCV.rds")
+# 
+# 
+# # Guardar en un único fichero
+# write.csv(tabla_cv_unificada,
+#           file = "Datos/transformados/IPC_validacion_RMSE_completo.csv",
+#           row.names = FALSE)
+# 
 
+
+
+
+# =============================
+# CARGAR RESULTADOS DE VALIDACIÓN CRUZADA (tsCV)
+# =============================
+
+tabla_cv_unificada <- read.csv("Datos/transformados/IPC_validacion_RMSE_completo.csv")
+
+cat("\n# === RESULTADOS VALIDACIÓN CRUZADA (tsCV) ===\n")
+print(tabla_cv_unificada, row.names = FALSE)
+
+# Elegir el mejor modelo por RMSE medio
+best_idx <- which.min(tabla_cv_unificada$RMSE_cv_mean)
+best_cv_model <- tabla_cv_unificada$Modelo[best_idx]
+best_cv_rmse  <- tabla_cv_unificada$RMSE_cv_mean[best_idx]
+
+cat("\n✅ Mejor modelo por validación cruzada:", best_cv_model,
+    "con RMSE medio =", best_cv_rmse, "\n")
+
+
+# =========================================================
+# GRÁFICOS DE PRONÓSTICO (RE-EJECUCIÓN RÁPIDA)
+# =========================================================
+library(ggplot2)
+library(forecast)
+dir.create("Graficos", showWarnings = FALSE)
+
+# --- 0) Por si no existen objetos del paso anterior (seguridad ligera)
+if (!exists("fit_arima") | !exists("fit_arima2") | !exists("fit_sarima")) {
+  stop("Faltan modelos fit_arima / fit_arima2 / fit_sarima. Ejecuta antes la estimación.")
+}
+if (!exists("MODELO_FINAL")) {
+  MODELO_FINAL <- Arima(IPC_sinO,
+                        order = c(0,1,0),
+                        seasonal = list(order = c(1,1,0), period = 12),
+                        lambda = lambda, biasadj = TRUE)
+}
+
+# --- 1) Pronósticos sobre el tramo de test (para comparar con observado)
+h_test <- length(test_IPC)
+fc_arima_test   <- forecast(fit_arima,  h = h_test)
+fc_arima2_test  <- forecast(fit_arima2, h = h_test)
+fc_sarima_test  <- forecast(fit_sarima, h = h_test)
+
+# (a) Gráfico general desde 2000 (solo tramo relevante mostrado)
+p_test_full <- autoplot(window(IPC_sinO, start = c(2000,1)), series = "IPC") +
+  autolayer(fc_sarima_test$mean, series = "SARIMA (test)") +
+  autolayer(fc_arima_test$mean,  series = "ARIMA1 (test)") +
+  autolayer(fc_arima2_test$mean, series = "ARIMA2 (test)") +
+  autolayer(test_IPC,            series = "Observado test") +
+  ggtitle("IPC — Comparativa pronósticos en tramo de test") +
+  xlab("Tiempo") + ylab("IPC") +
+  theme(legend.title = element_blank())
+print(p_test_full)
+ggsave("Graficos/01_IPC_test_full.png", p_test_full, width = 9, height = 5, dpi = 150)
+
+# (b) Zoom 2017–2023
+p_test_zoom <- p_test_full + coord_cartesian(xlim = c(2017, 2023.99)) +
+  ggtitle("IPC — Comparativa pronósticos en test (zoom 2017–2023)")
+print(p_test_zoom)
+ggsave("Graficos/02_IPC_test_zoom_2017_2023.png", p_test_zoom, width = 9, height = 5, dpi = 150)
+
+# --- 2) Pronóstico FUTURO 12 meses con MODELO_FINAL
+FC_12 <- forecast(MODELO_FINAL, h = 12)
+
+# (c) Futuro 12 meses desde 2000 (para contexto)
+p_future <- autoplot(FC_12) +
+  coord_cartesian(xlim = c(2000, max(time(FC_12$mean)))) +
+  ggtitle("IPC — Pronóstico 12 meses (modelo final)") +
+  xlab("Tiempo") + ylab("IPC")
+print(p_future)
+ggsave("Graficos/03_IPC_future_12m.png", p_future, width = 9, height = 5, dpi = 150)
+
+# --- 3) (Opcional) Dos paneles en una imagen: test (zoom) + futuro
+#     Requiere gridExtra (ya lo usaste antes)
+if (requireNamespace("gridExtra", quietly = TRUE)) {
+  library(gridExtra)
+  p_combo <- grid.arrange(p_test_zoom, p_future, ncol = 1,
+                          top = "IPC — Pronósticos: Test (zoom) y Futuro 12 meses")
+  ggsave("Graficos/04_IPC_combo_test_zoom_future.png", p_combo, width = 9, height = 9, dpi = 150)
+}
+
+# --- 4) Mensaje final
+cat("\nGuardados:\n",
+    "- Graficos/01_IPC_test_full.png\n",
+    "- Graficos/02_IPC_test_zoom_2017_2023.png\n",
+    "- Graficos/03_IPC_future_12m.png\n",
+    "- Graficos/04_IPC_combo_test_zoom_future.png (si gridExtra disponible)\n", sep = "")
