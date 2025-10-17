@@ -117,9 +117,9 @@ interpretar_ljungbox <- function(modelo, lag = 24, tipo = "Ljung-Box") {
   invisible(test)
 }
 
-interpretar_boxcox(modelo_PIB_Arima)
-interpretar_boxcox(modelo_PIB_sarima)
-interpretar_boxcox(modelo_PIB_AutoArima)
+interpretar_ljungbox(modelo_PIB_Arima)
+interpretar_ljungbox(modelo_PIB_sarima)
+interpretar_ljungbox(modelo_PIB_AutoArima)
 
 # Crear DataFrame comparativo de accuracys de los tres modelos
 
@@ -156,13 +156,13 @@ df_pred_arima <- data.frame(
 # --- SARIMA ---
 df_pred_sarima <- data.frame(
   Trimestre = time(test_PIB),
-  Pred = as.numeric(pred_PIB_revert_S)
+  Pred = as.numeric(pred_PIB_sarima$mean)
 )
 
 # --- AUTO.ARIMA ---
 df_pred_autoarima <- data.frame(
   Trimestre = time(test_PIB),
-  Pred = as.numeric(pred_PIB_revert_AA)
+  Pred = as.numeric(pred_PIB_AutoArima$mean)
 )
 
 # Punto donde comienza el test (2021 Q3)
