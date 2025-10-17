@@ -380,13 +380,13 @@ p_test_full <- autoplot(window(IPC_sinO, start = c(2000,1)), series = "IPC") +
   xlab("Tiempo") + ylab("IPC") +
   theme(legend.title = element_blank())
 print(p_test_full)
-ggsave("Graficos/01_IPC_test_full.png", p_test_full, width = 9, height = 5, dpi = 150)
+#ggsave("Graficos/01_IPC_test_full.png", p_test_full, width = 9, height = 5, dpi = 150)
 
 # (b) Zoom 2017–2023
 p_test_zoom <- p_test_full + coord_cartesian(xlim = c(2017, 2023.99)) +
   ggtitle("IPC — Comparativa pronósticos en test (zoom 2017–2023)")
 print(p_test_zoom)
-ggsave("Graficos/02_IPC_test_zoom_2017_2023.png", p_test_zoom, width = 9, height = 5, dpi = 150)
+#ggsave("Graficos/02_IPC_test_zoom_2017_2023.png", p_test_zoom, width = 9, height = 5, dpi = 150)
 
 # --- 2) Pronóstico FUTURO 12 meses con MODELO_FINAL
 FC_12 <- forecast(MODELO_FINAL, h = 12)
@@ -397,7 +397,7 @@ p_future <- autoplot(FC_12) +
   ggtitle("IPC — Pronóstico 12 meses (modelo final)") +
   xlab("Tiempo") + ylab("IPC")
 print(p_future)
-ggsave("Graficos/03_IPC_future_12m.png", p_future, width = 9, height = 5, dpi = 150)
+#ggsave("Graficos/03_IPC_future_12m.png", p_future, width = 9, height = 5, dpi = 150)
 
 # --- 3) (Opcional) Dos paneles en una imagen: test (zoom) + futuro
 #     Requiere gridExtra (ya lo usaste antes)
@@ -405,12 +405,5 @@ if (requireNamespace("gridExtra", quietly = TRUE)) {
   library(gridExtra)
   p_combo <- grid.arrange(p_test_zoom, p_future, ncol = 1,
                           top = "IPC — Pronósticos: Test (zoom) y Futuro 12 meses")
-  ggsave("Graficos/04_IPC_combo_test_zoom_future.png", p_combo, width = 9, height = 9, dpi = 150)
+  #ggsave("Graficos/04_IPC_combo_test_zoom_future.png", p_combo, width = 9, height = 9, dpi = 150)
 }
-
-# --- 4) Mensaje final
-cat("\nGuardados:\n",
-    "- Graficos/01_IPC_test_full.png\n",
-    "- Graficos/02_IPC_test_zoom_2017_2023.png\n",
-    "- Graficos/03_IPC_future_12m.png\n",
-    "- Graficos/04_IPC_combo_test_zoom_future.png (si gridExtra disponible)\n", sep = "")
