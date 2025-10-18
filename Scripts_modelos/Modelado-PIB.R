@@ -21,8 +21,8 @@ decomPIB <- decompose(PIB_sinO)
 autoplot(decomPIB)
 
 # Train(2000,1)(2021,2) test(2021,2)(2022,2)
-train_PIB <- window(PIB_sinO, start = c(2000, 1), end = c(2021, 1))
-test_PIB <- window(PIB_sinO, start = c(2021, 2), end = c(2022, 3))
+train_PIB <- window(PIB_sinO, start = c(2000, 1), end = c(2020, 1))
+test_PIB <- window(PIB_sinO, start = c(2020, 2), end = c(2022, 3))
 
 # Comprobar estacionariedad con los test (seguramente sea no estacionaria porque no la hemos hecho estacionaria todavía)
 test_estacionariedad(train_PIB, nombre = "PIB")
@@ -46,7 +46,7 @@ test_estacionariedad(train_PIB_est, nombre = "PIB")
 # Modelos
 
 # ------ AUTO.ARIMA (auto.arima con seasonal = FALSE) ------
-modelo_PIB_AutoArima <- auto.arima(train_PIB, lambda = 0, seasonal = FALSE) # el lambda = 0  ya aplica el log
+modelo_PIB_AutoArima <- auto.arima(train_PIB, lambda = 0, seasonal = FALSE, stepwise=FALSE, approximation=FALSE) # el lambda = 0  ya aplica el log
 summary(modelo_PIB_AutoArima)
 checkresiduals(modelo_PIB_AutoArima)
 
@@ -196,5 +196,149 @@ plot_autoarima <- ggplot() +
   theme_minimal()
 
 # === Mostrar los tres gráficos juntos ===
+grid.arrange(plot_arima, plot_sarima, plot_autoarima, ncol = 1)
+
+
+
+############################################################################################
+# CROSS - VALIDATION
+
+# -----------
+# Parámetros
+# -----------
+h <- 1                # pasos a predecir
+train_size <- 40      # tamaño mínimo del train inicial
+n <- length(PIB_sinO) # longitud total de la serie
+
+# Crear vectores para almacenar predicciones
+pred_arima_manual <- rep(NA, n - train_size)
+pred_sarima       <- rep(NA, n - train_size)
+pred_autoarima    <- rep(NA, n - train_size)
+
+# -----------------
+# Rolling forecast
+# -----------------
+for(i in train_size:(n-1)) {
+  train <- window(PIB_sinO, end = time(PIB_sinO)[i])
+  
+  # --- ARIMA manual ---
+  fit_manual <- try(arima(diff(log(train), differences = 2), order = c(3,0,3)), silent = TRUE)
+  if(inherits(fit_manual, "try-error")) {
+    pred_arima_manual[i - train_size + 1] <- NA
+  } else {
+    fc_manual <- predict(fit_manual, n.ahead = h)
+    last_values <- log(tail(train, 2))
+    pred_arima_manual[i - train_size + 1] <- exp(diffinv(fc_manual$pred, differences = 2, xi = last_values)[3])
+  }
+  # Revertir diferencias y log
+  last_values <- log(tail(train, 2))
+  pred_arima_manual[i - train_size + 1] <- exp(diffinv(fc_manual$pred, differences = 2, xi = last_values)[3])
+  
+  # --- SARIMA ---
+  fit_sarima <- auto.arima(train, seasonal = TRUE, lambda = 0)
+  pred_sarima[i - train_size + 1] <- as.numeric(forecast(fit_sarima, h = h)$mean)
+  
+  # --- AUTO.ARIMA ---
+  fit_auto <- auto.arima(train, seasonal = FALSE, lambda = 0)
+  pred_autoarima[i - train_size + 1] <- as.numeric(forecast(fit_auto, h = h)$mean)
+}
+
+# --------
+# Errores
+# --------
+actual <- window(PIB_sinO, start = time(PIB_sinO)[train_size + 1])
+
+errors_arima_manual <- actual - pred_arima_manual
+errors_sarima       <- actual - pred_sarima
+errors_autoarima    <- actual - pred_autoarima
+
+# ---------
+# Métricas
+# ---------
+metrics <- function(errors, actual) {
+  rmse <- sqrt(mean(errors^2, na.rm = TRUE))
+  mae  <- mean(abs(errors), na.rm = TRUE)
+  mape <- mean(abs(errors / actual), na.rm = TRUE) * 100
+  return(c(RMSE = rmse, MAE = mae, MAPE = mape))
+}
+
+metrics_arima_manual <- metrics(errors_arima_manual, actual)
+metrics_sarima       <- metrics(errors_sarima, actual)
+metrics_autoarima    <- metrics(errors_autoarima, actual)
+
+
+# ------------------------
+# Crear tabla comparativa
+# ------------------------
+df_metrics <- data.frame(
+  Modelo = c("ARIMA_manual", "SARIMA", "AUTO.ARIMA"),
+  RMSE   = c(metrics_arima_manual["RMSE"], metrics_sarima["RMSE"], metrics_autoarima["RMSE"]),
+  MAE    = c(metrics_arima_manual["MAE"], metrics_sarima["MAE"], metrics_autoarima["MAE"]),
+  MAPE   = c(metrics_arima_manual["MAPE"], metrics_sarima["MAPE"], metrics_autoarima["MAPE"])
+)
+
+print(df_metrics)
+
+# -----------------------
+# Comprobar los residuos
+# -----------------------
+check_residuals <- function(errors, modelo_name) {
+  cat("----", modelo_name, "----\n")
+  print(Box.test(errors, lag = 12, type = "Ljung-Box"))
+  print(adf.test(errors))
+  print(kpss.test(errors))
+  cat("\n")
+}
+
+check_residuals(errors_arima_manual, "ARIMA_manual") # correcto, pasa los 3 test
+check_residuals(errors_sarima, "SARIMA") # correcto, pasa los 3 test
+check_residuals(errors_autoarima, "AUTO.ARIMA") # no pasa los 3
+
+
+# ---------
+# Graficar
+# ---------
+
+# Dataframes individuales para cada modelo
+df_arima_manual <- data.frame(
+  Trimestre = time(PIB_sinO)[start_index:n],
+  Real      = as.numeric(window(PIB_sinO, start = time(PIB_sinO)[start_index])),
+  Pred      = pred_arima_manual
+)
+
+df_sarima <- data.frame(
+  Trimestre = time(PIB_sinO)[start_index:n],
+  Real      = as.numeric(window(PIB_sinO, start = time(PIB_sinO)[start_index])),
+  Pred      = pred_sarima
+)
+
+df_autoarima <- data.frame(
+  Trimestre = time(PIB_sinO)[start_index:n],
+  Real      = as.numeric(window(PIB_sinO, start = time(PIB_sinO)[start_index])),
+  Pred      = pred_autoarima
+)
+
+# --- Gráfica ARIMA manual ---
+plot_arima <- ggplot(df_arima_manual, aes(x = Trimestre)) +
+  geom_line(aes(y = Real), color = "black", size = 1) +
+  geom_line(aes(y = Pred), color = "red", linetype = "dashed", size = 1) +
+  labs(title = "ARIMA manual", y = "PIB", x = "Trimestre") +
+  theme_minimal()
+
+# --- Gráfica SARIMA ---
+plot_sarima <- ggplot(df_sarima, aes(x = Trimestre)) +
+  geom_line(aes(y = Real), color = "black", size = 1) +
+  geom_line(aes(y = Pred), color = "green", linetype = "dashed", size = 1) +
+  labs(title = "SARIMA", y = "PIB", x = "Trimestre") +
+  theme_minimal()
+
+# --- Gráfica AUTO.ARIMA ---
+plot_autoarima <- ggplot(df_autoarima, aes(x = Trimestre)) +
+  geom_line(aes(y = Real), color = "black", size = 1) +
+  geom_line(aes(y = Pred), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "AUTO.ARIMA", y = "PIB", x = "Trimestre") +
+  theme_minimal()
+
+# --- Juntar los tres gráficos ---
 grid.arrange(plot_arima, plot_sarima, plot_autoarima, ncol = 1)
 
