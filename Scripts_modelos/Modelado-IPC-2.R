@@ -31,7 +31,7 @@ stopifnot(is.ts(IPC_sinO), frequency(IPC_sinO) == 12)
 
 train_IPC <- window(IPC_sinO, start = TRAIN_START, end = TRAIN_END)
 test_IPC  <- window(IPC_sinO, start = TEST_START,  end = TEST_END)
-h_test    <- length(test_IPC)
+h_test    <- length(test_IPC) + 2   # <- Ajuste pedido (+2)
 if (h_test <= 0) stop("Tramo TEST vacío. Revisa TEST_START/TEST_END.")
 
 # ------ Identificacion ------
@@ -127,7 +127,7 @@ fechas_test <- as.yearmon(time(test_IPC))
 pred_test_tbl <- data.frame(
   Fecha_YM      = format(fechas_test, "%Y-%m"),
   Observado     = round(as.numeric(test_IPC), 3),
-  `Pred ganador`= round(as.numeric(FC_TEST$mean), 3),
+  `Pred ganador`= round(as.numeric(FC_TEST$mean[1:length(test_IPC)]), 3),
   check.names   = FALSE
 )
 cat("\n# === Tabla de predicciones en TEST (ganador) ===\n")
@@ -148,7 +148,6 @@ cat("\n# === Diagnóstico residuos — MODELO FINAL (reentrenado en TODA la seri
 ggtsdisplay(residuals(MODELO_FINAL))
 checkresiduals(MODELO_FINAL)
 
-
 # =========================================================
 # GRÁFICOS DE PRONÓSTICO (TEST y FUTURO)
 # =========================================================
@@ -156,13 +155,11 @@ library(ggplot2)
 library(forecast)
 dir.create("Graficos", showWarnings = FALSE)
 
-# --- 1) Pronósticos sobre el tramo de test para comparar con observado
-h_test <- length(test_IPC)
+h_test <- length(test_IPC) + 2
 fc_arima_test   <- forecast(fit_arima1, h = h_test)
 fc_arima2_test  <- forecast(fit_arima2, h = h_test)
 fc_sarima_test  <- forecast(fit_sarima, h = h_test)
 
-# (a) Gráfico general desde 2000 (tramo de test + pronósticos)
 p_test_full <- autoplot(window(IPC_sinO, start = c(2000,1)), series = "IPC") +
   autolayer(fc_sarima_test$mean, series = "SARIMA (test)") +
   autolayer(fc_arima_test$mean,  series = "ARIMA1 (test)") +
@@ -172,39 +169,28 @@ p_test_full <- autoplot(window(IPC_sinO, start = c(2000,1)), series = "IPC") +
   xlab("Tiempo") + ylab("IPC") +
   theme(legend.title = element_blank())
 print(p_test_full)
-# ggsave("Graficos/01_IPC_test_full.png", p_test_full, width = 9, height = 5, dpi = 150)
 
-# (b) Zoom 2017–2023
 p_test_zoom <- p_test_full + coord_cartesian(xlim = c(2017, 2023.99)) +
   ggtitle("IPC — Comparativa pronósticos en test (zoom 2017–2023)")
 print(p_test_zoom)
-# ggsave("Graficos/02_IPC_test_zoom_2017_2023.png", p_test_zoom, width = 9, height = 5, dpi = 150)
-
-# --- 2) Pronóstico FUTURO 12 meses con MODELO_FINAL
-# (ya tienes FC_FUT calculado; si no, descomenta la línea siguiente)
-# FC_FUT <- forecast(MODELO_FINAL, h = FUTURE_H)
 
 p_future <- autoplot(FC_FUT) +
   coord_cartesian(xlim = c(2000, max(time(FC_FUT$mean)))) +
   ggtitle("IPC — Pronóstico 12 meses (modelo final)") +
   xlab("Tiempo") + ylab("IPC")
 print(p_future)
-# ggsave("Graficos/03_IPC_future_12m.png", p_future, width = 9, height = 5, dpi = 150)
 
-# (c) (Opcional) Dos paneles: test (zoom) + futuro
 if (requireNamespace("gridExtra", quietly = TRUE)) {
   library(gridExtra)
   p_combo <- grid.arrange(p_test_zoom, p_future, ncol = 1,
                           top = "IPC — Pronósticos: Test (zoom) y Futuro 12 meses")
-  # ggsave("Graficos/04_IPC_combo_test_zoom_future.png", p_combo, width = 9, height = 9, dpi = 150)
 }
 
-# --- 3) (Opcional) Comparativo simple ARIMA1 vs SARIMA en test
 df_comp <- data.frame(
   Fecha  = as.numeric(time(test_IPC)),
   Real   = as.numeric(test_IPC),
-  ARIMA1 = as.numeric(fc_arima_test$mean),
-  SARIMA = as.numeric(fc_sarima_test$mean)
+  ARIMA1 = as.numeric(fc_arima_test$mean[1:length(test_IPC)]),
+  SARIMA = as.numeric(fc_sarima_test$mean[1:length(test_IPC)])
 )
 
 p1 <- ggplot(df_comp, aes(x = Fecha)) +
@@ -225,7 +211,6 @@ if (requireNamespace("gridExtra", quietly = TRUE)) {
   grid.arrange(p1, p2, ncol = 1)
 }
 
-# --- 4) Tabla con valores pronosticados en TEST (para informe/CSV)
 library(zoo)
 fechas_test <- as.yearmon(time(test_IPC))
 pred_test_tbl <- data.frame(
@@ -233,23 +218,22 @@ pred_test_tbl <- data.frame(
   Mes       = as.integer(round(12 * (fechas_test - floor(fechas_test))) + 1),
   Fecha_YM  = format(fechas_test, "%Y-%m"),
   Observado = round(as.numeric(test_IPC), 3),
-  ARIMA1    = round(as.numeric(fc_arima_test$mean), 3),
-  ARIMA2    = round(as.numeric(fc_arima2_test$mean), 3),
-  SARIMA    = round(as.numeric(fc_sarima_test$mean), 3),
+  ARIMA1    = round(as.numeric(fc_arima_test$mean[1:length(test_IPC)]), 3),
+  ARIMA2    = round(as.numeric(fc_arima2_test$mean[1:length(test_IPC)]), 3),
+  SARIMA    = round(as.numeric(fc_sarima_test$mean[1:length(test_IPC)]), 3),
   check.names = FALSE
 )
 cat("\n# === TEST desde", format(min(fechas_test), "%Y-%m"),
     "hasta", format(max(fechas_test), "%Y-%m"),
     "(", nrow(pred_test_tbl), "meses ) ===\n")
 print(pred_test_tbl, row.names = FALSE)
-# write.csv(pred_test_tbl, "Datos/resultados/IPC_pronosticos_test.csv", row.names = FALSE)
 
 
 
 # === 4) Gráfico con ZOOM 2017–2023 (comparando forecast vs test) ===
 autoplot(window(IPC_sinO, start = c(2017,1))) +
-  autolayer(FC_TEST$mean, series = "Forecast (test)") +
-  autolayer(test_IPC,      series = "Observado (test)") +
+  autolayer(FC_TEST$mean[1:length(test_IPC)], series = "Forecast (test)") +
+  autolayer(test_IPC,                          series = "Observado (test)") +
   ggtitle("IPC — Zoom 2017–2023 (Modelo final)") +
   xlab("Tiempo") + ylab("IPC") +
   theme(legend.title = element_blank())
