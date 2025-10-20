@@ -13,7 +13,6 @@ library(tseries)
 library(gridExtra)
 source("Scripts_Preprocesamiento/Funciones.R")
 
-`%||%` <- function(a,b) if (is.null(a)) b else a
 
 # ------ Configuracion ------
 
@@ -232,8 +231,8 @@ print(pred_test_tbl, row.names = FALSE)
 
 # === 4) Gráfico con ZOOM 2017–2023 (comparando forecast vs test) ===
 autoplot(window(IPC_sinO, start = c(2017,1))) +
-  autolayer(FC_TEST$mean[1:length(test_IPC)], series = "Forecast (test)") +
-  autolayer(test_IPC,                          series = "Observado (test)") +
+  autolayer(FC_TEST$mean, series = "Forecast (test)") +
+  autolayer(test_IPC,      series = "Observado (test)") +
   ggtitle("IPC — Zoom 2017–2023 (Modelo final)") +
   xlab("Tiempo") + ylab("IPC") +
   theme(legend.title = element_blank())
