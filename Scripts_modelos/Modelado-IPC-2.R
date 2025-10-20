@@ -3,6 +3,7 @@
 ####### MODELADO DEL IPC
 
 # Cargar librerias
+library(zoo)
 library(dplyr)
 library(openxlsx)
 library(naniar)
