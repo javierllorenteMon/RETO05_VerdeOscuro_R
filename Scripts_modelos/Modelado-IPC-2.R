@@ -237,3 +237,18 @@ autoplot(window(IPC_sinO, start = c(2017,1))) +
   ggtitle("IPC — Zoom 2017–2023 (Modelo final)") +
   xlab("Tiempo") + ylab("IPC") +
   theme(legend.title = element_blank())
+
+
+
+# --- Tabla específica: predicciones de oct-nov-dic 2022 con MODELO_FINAL ---
+fechas_fut <- zoo::as.yearmon(time(FC_FUT$mean))
+sel <- format(fechas_fut, "%Y-%m") %in% c("2022-10","2022-11","2022-12")
+
+pred_oct_dic <- data.frame(
+  Fecha_YM = format(fechas_fut[sel], "%Y-%m"),
+  Pred     = round(as.numeric(FC_FUT$mean[sel]), 3),
+  check.names = FALSE
+)
+cat("\n# === Predicciones MODELO_FINAL para 2022-10, 2022-11, 2022-12 ===\n")
+print(pred_oct_dic, row.names = FALSE)
+
