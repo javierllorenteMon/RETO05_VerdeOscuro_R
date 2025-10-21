@@ -14,25 +14,16 @@ library(tseries)
 library(gridExtra)
 source("Scripts_Preprocesamiento/Funciones.R")
 
-
-# ------ Configuracion ------
-
-RUTA_RDS   <- "Datos/transformados/IPC_sinO_M.rds"
-TRAIN_START <- c(2000, 1)
-TRAIN_END   <- c(2022, 1)   # incluye parte del nuevo régimen
-TEST_START  <- c(2022, 2)
-TEST_END    <- c(2022, 9)
-FUTURE_H    <- 12
+IPC   <- "Datos/transformados/IPC_sinO_M.rds"
 
 # ------ Datos ------
 
-IPC_sinO <- readRDS(RUTA_RDS)
+IPC_sinO <- readRDS(IPC)
 stopifnot(is.ts(IPC_sinO), frequency(IPC_sinO) == 12)
 
-train_IPC <- window(IPC_sinO, start = TRAIN_START, end = TRAIN_END)
-test_IPC  <- window(IPC_sinO, start = TEST_START,  end = TEST_END)
+train_IPC <- window(IPC_sinO, start = c(2000, 1), end = c(2022, 1))
+test_IPC  <- window(IPC_sinO, start = c(2022, 2),  end = c(2022, 9))
 h_test    <- length(test_IPC) + 2   # <- Ajuste pedido (+2)
-if (h_test <= 0) stop("Tramo TEST vacío. Revisa TEST_START/TEST_END.")
 
 # ------ Identificacion ------
 
@@ -113,7 +104,7 @@ MODELO_FINAL <- Arima(IPC_sinO,
                       lambda=lambda, biasadj=TRUE)
 
 FC_TEST <- fc_list[[winner_name]]
-FC_FUT  <- forecast(MODELO_FINAL, h=FUTURE_H)
+FC_FUT  <- forecast(MODELO_FINAL, h=12)
 checkresiduals(MODELO_FINAL)
 
 # ------  Métricas claras + tabla de valores TEST ------
