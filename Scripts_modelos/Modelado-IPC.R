@@ -407,3 +407,33 @@ if (requireNamespace("gridExtra", quietly = TRUE)) {
                           top = "IPC — Pronósticos: Test (zoom) y Futuro 12 meses")
   #ggsave("Graficos/04_IPC_combo_test_zoom_future.png", p_combo, width = 9, height = 9, dpi = 150)
 }
+
+
+
+
+# =========================================================
+# TABLAS CON LOS VALORES PRONOSTICADOS (y guardado a CSV)
+# =========================================================
+library(zoo)
+
+fechas_test <- as.yearmon(time(test_IPC))
+
+pred_test_tbl <- data.frame(
+  Anio      = as.integer(floor(fechas_test)),
+  Mes       = as.integer(round(12 * (fechas_test - floor(fechas_test))) + 1),
+  Fecha_YM  = format(fechas_test, "%Y-%m"),        # etiqueta bonita
+  Observado = round(as.numeric(test_IPC), 3),
+  ARIMA1    = round(as.numeric(fc_arima_test$mean), 3),
+  ARIMA2    = round(as.numeric(fc_arima2_test$mean), 3),
+  SARIMA    = round(as.numeric(fc_sarima_test$mean), 3),
+  check.names = FALSE
+)
+
+cat("\n# === TEST desde", format(min(fechas_test), "%Y-%m"),
+    "hasta", format(max(fechas_test), "%Y-%m"),
+    "(", nrow(pred_test_tbl), "meses ) ===\n")
+print(pred_test_tbl, row.names = FALSE)
+
+# write.csv(pred_test_tbl,
+#           file = "Datos/resultados/IPC_pronosticos_test.csv",
+#           row.names = FALSE)
