@@ -4,6 +4,7 @@
 
 # Cargar librerias
 library(zoo)
+library(car)
 library(dplyr)
 library(openxlsx)
 library(naniar)
@@ -14,11 +15,14 @@ library(tseries)
 library(gridExtra)
 source("Scripts_Preprocesamiento/Funciones.R")
 
-IPC   <- "Datos/transformados/IPC_sinO_M.rds"
+IPC_sinO   <- readRDS("Datos/transformados/IPC_sinO_M.rds")
+MS_sin0   <- readRDS("Datos/transformados/MS_sinO_M.rds")
+SMI_sinO   <- readRDS("Datos/transformados/SMI_sinO_M.rds")
+UR_sinO   <- readRDS("Datos/transformados/UR_sinO_M.rds")
+
 
 # ------ Datos ------
 
-IPC_sinO <- readRDS(IPC)
 stopifnot(is.ts(IPC_sinO), frequency(IPC_sinO) == 12)
 
 train_IPC <- window(IPC_sinO, start = c(2000, 1), end = c(2022, 1))
@@ -111,7 +115,6 @@ checkresiduals(MODELO_FINAL)
 
 ACC_FINAL <- accuracy(FC_TEST, test_IPC)[c("Training set","Test set"),
                                          c("ME","RMSE","MAE","MAPE")]
-cat("\n# === Accuracy (TRAIN/TEST) del ganador ===\n")
 print(ACC_FINAL)
 
 fechas_test <- as.yearmon(time(test_IPC))
@@ -131,115 +134,241 @@ cat("\nGanador definitivo:", winner_name,
 # =========================================================
 # DIAGNÓSTICO DE RESIDUOS (GANADOR PROVISIONAL y MODELO FINAL)
 # =========================================================
-cat("\n# === Diagnóstico residuos — GANADOR PROVISIONAL (ajustado en TRAIN) ===\n")
 ggtsdisplay(residuals(WIN))
 checkresiduals(WIN)
 
-cat("\n# === Diagnóstico residuos — MODELO FINAL (reentrenado en TODA la serie) ===\n")
 ggtsdisplay(residuals(MODELO_FINAL))
 checkresiduals(MODELO_FINAL)
 
-# =========================================================
-# GRÁFICOS DE PRONÓSTICO (TEST y FUTURO)
-# =========================================================
-library(ggplot2)
-library(forecast)
-dir.create("Graficos", showWarnings = FALSE)
+# ===============      ARIMAX (exógenas)     ==============
 
-h_test <- length(test_IPC) + 2
-fc_arima_test   <- forecast(fit_arima1, h = h_test)
-fc_arima2_test  <- forecast(fit_arima2, h = h_test)
-fc_sarima_test  <- forecast(fit_sarima, h = h_test)
+# --- (2) Crear ventanas train/test para exógenas ---
+train_MS  <- window(MS_sin0,  start = start(train_IPC), end = end(train_IPC))
+test_MS   <- window(MS_sin0,  start = start(test_IPC),  end = end(test_IPC))
 
-p_test_full <- autoplot(window(IPC_sinO, start = c(2000,1)), series = "IPC") +
-  autolayer(fc_sarima_test$mean, series = "SARIMA (test)") +
-  autolayer(fc_arima_test$mean,  series = "ARIMA1 (test)") +
-  autolayer(fc_arima2_test$mean, series = "ARIMA2 (test)") +
-  autolayer(test_IPC,            series = "Observado test") +
-  ggtitle("IPC — Comparativa pronósticos en tramo de test") +
-  xlab("Tiempo") + ylab("IPC") +
-  theme(legend.title = element_blank())
-print(p_test_full)
+train_SMI <- window(SMI_sinO, start = start(train_IPC), end = end(train_IPC))
+test_SMI  <- window(SMI_sinO, start = start(test_IPC),  end = end(test_IPC))
 
-p_test_zoom <- p_test_full + coord_cartesian(xlim = c(2017, 2023.99)) +
-  ggtitle("IPC — Comparativa pronósticos en test (zoom 2017–2023)")
-print(p_test_zoom)
+train_UR  <- window(UR_sinO,  start = start(train_IPC), end = end(train_IPC))
+test_UR   <- window(UR_sinO,  start = start(test_IPC),  end = end(test_IPC))
 
-p_future <- autoplot(FC_FUT) +
-  coord_cartesian(xlim = c(2000, max(time(FC_FUT$mean)))) +
-  ggtitle("IPC — Pronóstico 12 meses (modelo final)") +
-  xlab("Tiempo") + ylab("IPC")
-print(p_future)
+# --- (3) Limpieza básica de NA + chequeos de longitudes ---
+fix_na <- function(v) if (anyNA(v)) forecast::na.interp(v) else v
 
-if (requireNamespace("gridExtra", quietly = TRUE)) {
-  library(gridExtra)
-  p_combo <- grid.arrange(p_test_zoom, p_future, ncol = 1,
-                          top = "IPC — Pronósticos: Test (zoom) y Futuro 12 meses")
+train_MS  <- fix_na(train_MS);  test_MS  <- fix_na(test_MS)
+train_SMI <- fix_na(train_SMI); test_SMI <- fix_na(test_SMI)
+train_UR  <- fix_na(train_UR);  test_UR  <- fix_na(test_UR)
+
+stopifnot(length(train_MS)  == length(train_IPC),
+          length(train_SMI) == length(train_IPC),
+          length(train_UR)  == length(train_IPC),
+          length(test_MS)   == length(test_IPC),
+          length(test_SMI)  == length(test_IPC),
+          length(test_UR)   == length(test_IPC))
+
+# --- (4) Estandarizar exógenas con parámetros del TRAIN ---
+std_fit <- function(...) {
+  X <- cbind(...)
+  mu <- colMeans(X, na.rm=TRUE)
+  sdv <- apply(X, 2, sd, na.rm=TRUE)
+  Xs <- scale(X, center = mu, scale = sdv)
+  list(mu=mu, sdv=sdv, Xstd=as.matrix(Xs))
+}
+std_apply <- function(X, mu, sdv) {
+  as.matrix(scale(cbind(X), center = mu, scale = sdv))
 }
 
-df_comp <- data.frame(
-  Fecha  = as.numeric(time(test_IPC)),
-  Real   = as.numeric(test_IPC),
-  ARIMA1 = as.numeric(fc_arima_test$mean[1:length(test_IPC)]),
-  SARIMA = as.numeric(fc_sarima_test$mean[1:length(test_IPC)])
+S_MS   <- std_fit(MS = as.numeric(train_MS))
+S_MSS  <- std_fit(MS = as.numeric(train_MS),
+                  SMI= as.numeric(train_SMI))
+S_MSSU <- std_fit(MS = as.numeric(train_MS),
+                  SMI= as.numeric(train_SMI),
+                  UR = as.numeric(train_UR))
+
+Xtr_MS   <- S_MS$Xstd
+Xtr_MSS  <- S_MSS$Xstd
+Xtr_MSSU <- S_MSSU$Xstd
+
+Xte_MS   <- std_apply(as.numeric(test_MS),S_MS$mu,  S_MS$sdv)
+Xte_MSS  <- std_apply(cbind(as.numeric(test_MS),as.numeric(test_SMI)),S_MSS$mu,  S_MSS$sdv)
+Xte_MSSU <- std_apply(cbind(as.numeric(test_MS),as.numeric(test_SMI),
+                            as.numeric(test_UR)),S_MSSU$mu, S_MSSU$sdv)
+
+
+
+# Mirar correlacion
+datos_tr <- data.frame(
+  Fecha = as.yearmon(time(train_IPC)),
+  IPC   = as.numeric(train_IPC),
+  MS    = as.numeric(train_MS),
+  SMI   = as.numeric(train_SMI),
+  UR    = as.numeric(train_UR)
+)
+datos_tr <- na.omit(datos_tr)
+
+fit_all <- lm(IPC ~ MS + SMI + UR, data = datos_tr)
+R_multi <- sqrt(summary(fit_all)$r.squared)
+R_multi
+
+vif(fit_all)
+
+fit_MS     <- lm(IPC ~ MS, data = datos_tr)
+fit_MS_SMI <- lm(IPC ~ MS + SMI, data = datos_tr)
+fit_MS_SMI_UR <- lm(IPC ~ MS + SMI + UR, data = datos_tr)
+
+c(
+  R2_MS          = summary(fit_MS)$r.squared,
+  R2_MS_SMI      = summary(fit_MS_SMI)$r.squared,
+  dR2_add_SMI    = summary(fit_MS_SMI)$r.squared - summary(fit_MS)$r.squared,
+  R2_MS_SMI_UR   = summary(fit_MS_SMI_UR)$r.squared,
+  dR2_add_UR     = summary(fit_MS_SMI_UR)$r.squared - summary(fit_MS_SMI)$r.squared
 )
 
-p1 <- ggplot(df_comp, aes(x = Fecha)) +
-  geom_line(aes(y = Real),  color = "blue", size = 1.2) +
-  geom_line(aes(y = ARIMA1), color = "red",  size = 1.2, linetype = "dashed") +
-  ggtitle("Pronóstico ARIMA1 vs IPC real (tramo test)") +
-  xlab("Mes") + ylab("IPC") +
-  theme_minimal()
+# las mejores combinaciones probadas: MS, MS+SMI, MS+SMI+UR
+# --- (5) Ajuste ARIMAX 
+ARIMAX_MS <- auto.arima(train_IPC, xreg = Xtr_MS,
+                        lambda=lambda, biasadj=TRUE,
+                        seasonal=TRUE, d=d, D=D,
+                        stepwise=FALSE, approximation=FALSE)
 
-p2 <- ggplot(df_comp, aes(x = Fecha)) +
-  geom_line(aes(y = Real),  color = "blue",  size = 1.2) +
-  geom_line(aes(y = SARIMA), color = "green", size = 1.2, linetype = "dashed") +
-  ggtitle("Pronóstico SARIMA vs IPC real (tramo test)") +
-  xlab("Mes") + ylab("IPC") +
-  theme_minimal()
+ARIMAX_MSS <- auto.arima(train_IPC, xreg = Xtr_MSS,
+                         lambda=lambda, biasadj=TRUE,
+                         seasonal=TRUE, d=d, D=D,
+                         stepwise=FALSE, approximation=FALSE)
 
-if (requireNamespace("gridExtra", quietly = TRUE)) {
-  grid.arrange(p1, p2, ncol = 1)
+ARIMAX_MSSU <- auto.arima(train_IPC, xreg = Xtr_MSSU,
+                          lambda=lambda, biasadj=TRUE,
+                          seasonal=TRUE, d=d, D=D,
+                          stepwise=FALSE, approximation=FALSE)
+
+cat("\n[Modelos ARIMAX]\n")
+print(ARIMAX_MS)
+print(ARIMAX_MSS)
+print(ARIMAX_MSSU)
+
+# --- (6) Pronósticos en TEST (h = |test|) ---
+H <- length(test_IPC)
+fc_MS   <- forecast(ARIMAX_MS,   xreg = Xte_MS,   h = H)
+fc_MSS  <- forecast(ARIMAX_MSS,  xreg = Xte_MSS,  h = H)
+fc_MSSU <- forecast(ARIMAX_MSSU, xreg = Xte_MSSU, h = H)
+
+# --- (7) Accuracy + Ljung–Box ---
+safe_lb <- function(fit, lag=24){
+  tryCatch(Box.test(residuals(fit), lag=lag, type="Ljung-Box",
+                    fitdf=length(coef(fit)))$p.value,
+           error=function(e) NA_real_)
+}
+acc_row <- function(nm, fc){
+  out <- accuracy(fc, test_IPC)["Test set", c("ME","RMSE","MAE","MAPE")]
+  data.frame(Modelo = nm, t(out), check.names = FALSE, row.names = NULL)
 }
 
-library(zoo)
-fechas_test <- as.yearmon(time(test_IPC))
-pred_test_tbl <- data.frame(
-  Anio      = as.integer(floor(fechas_test)),
-  Mes       = as.integer(round(12 * (fechas_test - floor(fechas_test))) + 1),
-  Fecha_YM  = format(fechas_test, "%Y-%m"),
-  Observado = round(as.numeric(test_IPC), 3),
-  ARIMA1    = round(as.numeric(fc_arima_test$mean[1:length(test_IPC)]), 3),
-  ARIMA2    = round(as.numeric(fc_arima2_test$mean[1:length(test_IPC)]), 3),
-  SARIMA    = round(as.numeric(fc_sarima_test$mean[1:length(test_IPC)]), 3),
+ACC <- rbind(
+  acc_row("ARIMAX_MS",        fc_MS),
+  acc_row("ARIMAX_MS+SMI",    fc_MSS),
+  acc_row("ARIMAX_MS+SMI+UR", fc_MSSU)
+)
+ACC$LjungBox_p <- c(safe_lb(ARIMAX_MS), safe_lb(ARIMAX_MSS), safe_lb(ARIMAX_MSSU))
+ACC <- ACC[order(ACC$RMSE), ]
+
+cat("\n# === Comparativa ARIMAX en TEST (ordenado por RMSE) ===\n")
+print(ACC, row.names=FALSE)
+
+# --- (8) Elegir ganador (si no pasa LB, aún así por RMSE) ---
+valid <- ACC[!is.na(ACC$LjungBox_p) & ACC$LjungBox_p >= 0.05, ]
+if (nrow(valid) > 0) {
+  winner <- valid$Modelo[ which.min(valid$RMSE) ]
+} else {
+  winner <- ACC$Modelo[1]
+}
+cat("\nGanador:", winner,
+    "| RMSE test =", round((ACC %>% dplyr::filter(Modelo==winner))$RMSE,3),
+    "| Ljung-Box p =", round((ACC %>% dplyr::filter(Modelo==winner))$LjungBox_p,4), "\n")
+
+# --- (9) Tabla Pred vs Obs del ganador ---
+FC_WIN <- switch(winner,
+                 "ARIMAX_MS"          = fc_MS,
+                 "ARIMAX_MS+SMI"      = fc_MSS,
+                 "ARIMAX_MS+SMI+UR"   = fc_MSSU)
+
+fechas_test <- format(as.yearmon(time(test_IPC)), "%Y-%m")
+pred_tbl <- data.frame(
+  Fecha_YM    = fechas_test,
+  Observado   = round(as.numeric(test_IPC), 3),
+  Pred_ARIMAX = round(as.numeric(FC_WIN$mean), 3),
   check.names = FALSE
 )
-cat("\n# === TEST desde", format(min(fechas_test), "%Y-%m"),
-    "hasta", format(max(fechas_test), "%Y-%m"),
-    "(", nrow(pred_test_tbl), "meses ) ===\n")
+cat("\n# === Predicciones en TEST (ganador) ===\n")
+print(pred_tbl, row.names = FALSE)
+
+# --- (10) Diagnóstico de residuos del ganador ---
+WIN_FIT <- switch(winner,
+                  "ARIMAX_MS"          = ARIMAX_MS,
+                  "ARIMAX_MS+SMI"      = ARIMAX_MSS,
+                  "ARIMAX_MS+SMI+UR"   = ARIMAX_MSSU)
+ggtsdisplay(residuals(WIN_FIT))
+checkresiduals(WIN_FIT)
+
+
+# Comparativa ARIMAX VS SARIMA pronostico
+
+# 1) Reentrena ARIMAX_MS con TODA la serie IPC usando MS estandarizada
+MS_full    <- fix_na(MS_sin0)
+X_full_raw <- as.matrix(as.numeric(MS_full))
+X_full     <- std_apply(X_full_raw, S_MS$mu, S_MS$sdv)
+stopifnot(length(IPC_sinO) == nrow(X_full))
+
+ARIMAX_MS_FULL <- auto.arima(IPC_sinO,
+                             xreg = X_full,
+                             lambda = lambda, biasadj = TRUE,
+                             seasonal = TRUE, d = d, D = D,
+                             allowdrift = TRUE,
+                             stepwise = FALSE, approximation = FALSE)
+
+# 2) Pronostica MS para oct–nov–dic 2022 (h=3) y úsalo como xreg futuro
+fit_MS      <- auto.arima(MS_full, stepwise = FALSE, approximation = FALSE)
+MS_q4_hat   <- forecast(fit_MS, h = 3)$mean
+
+X_q4_raw <- as.matrix(as.numeric(MS_q4_hat))
+X_q4     <- std_apply(X_q4_raw, S_MS$mu, S_MS$sdv)
+
+# 3) Forecast ARIMAX_MS para Q4 (3 pasos)
+FC_Q4 <- forecast(ARIMAX_MS_FULL, xreg = X_q4, h = 3)
+
+
+
+#TABLA COMPARACIONES TODOS LOS MODELOS TEST
+fc_arima_test  <- fc_list[["ARIMA1"]]
+fc_arima2_test <- fc_list[["ARIMA2"]]
+fc_sarima_test <- fc_list[["SARIMA"]]
+
+idx <- as.Date(as.yearmon(time(test_IPC)))
+n <- length(test_IPC)  
+pred_test_tbl <- data.frame(
+  Anio      = as.integer(format(idx, "%Y")),
+  Mes       = as.integer(format(idx, "%m")),
+  Fecha_YM  = format(idx, "%Y-%m"),
+  Observado = round(as.numeric(test_IPC), 3),
+  ARIMA1    = round(as.numeric(fc_arima_test$mean)[seq_len(n)], 3),
+  ARIMA2    = round(as.numeric(fc_arima2_test$mean)[seq_len(n)], 3),
+  SARIMA    = round(as.numeric(fc_sarima_test$mean)[seq_len(n)], 3),
+  ARIMAX    = round(as.numeric(fc_MS$mean)[seq_len(n)], 3),
+  check.names = FALSE
+)
 print(pred_test_tbl, row.names = FALSE)
 
 
-
-# === 4) Gráfico con ZOOM 2017–2023 (comparando forecast vs test) ===
-autoplot(window(IPC_sinO, start = c(2017,1))) +
-  autolayer(FC_TEST$mean, series = "Forecast (test)") +
-  autolayer(test_IPC,      series = "Observado (test)") +
-  ggtitle("IPC — Zoom 2017–2023 (Modelo final)") +
-  xlab("Tiempo") + ylab("IPC") +
-  theme(legend.title = element_blank())
-
-
-
-# --- Tabla específica: predicciones de oct-nov-dic 2022 con MODELO_FINAL ---
-fechas_fut <- zoo::as.yearmon(time(FC_FUT$mean))
-sel <- format(fechas_fut, "%Y-%m") %in% c("2022-10","2022-11","2022-12")
-
-pred_oct_dic <- data.frame(
-  Fecha_YM = format(fechas_fut[sel], "%Y-%m"),
-  Pred     = round(as.numeric(FC_FUT$mean[sel]), 3),
+#PREDICCIONES DE MESES 10,11,12
+fechas_q4 <- format(seq(as.yearmon("2022-10"), by = 1/12, length.out = 3), "%Y-%m")
+pred_q4_tbl <- data.frame(
+  Fecha          = fechas_q4,
+  Pred_ARIMAX_MS = round(as.numeric(FC_Q4$mean), 3),
   check.names = FALSE
 )
-cat("\n# === Predicciones MODELO_FINAL para 2022-10, 2022-11, 2022-12 ===\n")
-print(pred_oct_dic, row.names = FALSE)
 
+print(pred_q4_tbl, row.names = FALSE)
+checkresiduals(ARIMAX_MS_FULL)
+
+# =========================================================
+# MODELO GANADOR ARIMAX pero mejores prediciones SARIMA(nos quedamos con Sarima)
+# =========================================================
