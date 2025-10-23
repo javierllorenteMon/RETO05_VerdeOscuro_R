@@ -359,16 +359,18 @@ print(pred_test_tbl, row.names = FALSE)
 
 
 #PREDICCIONES DE MESES 10,11,12
-fechas_q4 <- format(seq(as.yearmon("2022-10"), by = 1/12, length.out = 3), "%Y-%m")
 pred_q4_tbl <- data.frame(
   Fecha          = fechas_q4,
   Pred_ARIMAX_MS = round(as.numeric(FC_Q4$mean), 3),
-  check.names = FALSE
+  Pred_SARIMA    = round(as.numeric(FC_FUT$mean[1:3]), 3),
+  check.names    = FALSE
 )
 
 print(pred_q4_tbl, row.names = FALSE)
 checkresiduals(ARIMAX_MS_FULL)
 
 # =========================================================
-# MODELO GANADOR ARIMAX pero mejores prediciones SARIMA(nos quedamos con Sarima)
+# MODELO GANADOR ARIMAX 
 # =========================================================
+
+write.csv(fechas_q4,"Datos/Resultados/")
