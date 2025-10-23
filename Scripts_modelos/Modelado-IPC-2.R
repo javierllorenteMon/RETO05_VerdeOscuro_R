@@ -357,6 +357,8 @@ pred_test_tbl <- data.frame(
 )
 print(pred_test_tbl, row.names = FALSE)
 
+# Crear vector de fechas para los meses de octubre, noviembre y diciembre de 2022
+fechas_q4 <- format(seq(as.yearmon("2022-10"), by = 1/12, length.out = 3), "%Y-%m")
 
 #PREDICCIONES DE MESES 10,11,12
 pred_q4_tbl <- data.frame(
@@ -373,6 +375,6 @@ checkresiduals(ARIMAX_MS_FULL)
 # MODELO GANADOR ARIMAX 
 # =========================================================
 
-write.csv(pred_q4_tbl,"Datos/Resultados/Pred_IPC_2022_Q4.csv")
-write.csv(pred_test_tbl,"Datos/Resultados/Pred_IPC_Test_2022.csv")
+saveRDS(pred_test_tbl, "Datos/Resultados/Pred_IPC_Test_2022.rds")
+saveRDS(pred_q4_tbl,   "Datos/Resultados/Pred_IPC_2022_Q4.rds")
 
