@@ -372,7 +372,7 @@ print(pred_q4_tbl, row.names = FALSE)
 checkresiduals(ARIMAX_MS_FULL)
 
 # =========================================================
-# MODELO GANADOR ARIMAX 
+# MODELO GANADOR ARIMAX PERO NOS QUEDAMOS CON EL MAS SIMPLE(SARIMA)
 # =========================================================
 
 saveRDS(pred_test_tbl, "Datos/Resultados/Pred_IPC_Test_2022.rds")
