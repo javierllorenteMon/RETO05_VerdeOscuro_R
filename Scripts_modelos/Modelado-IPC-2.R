@@ -373,4 +373,6 @@ checkresiduals(ARIMAX_MS_FULL)
 # MODELO GANADOR ARIMAX 
 # =========================================================
 
-write.csv(fechas_q4,"Datos/Resultados/")
+write.csv(pred_q4_tbl,"Datos/Resultados/Pred_IPC_2022_Q4.csv")
+write.csv(pred_test_tbl,"Datos/Resultados/Pred_IPC_Test_2022.csv")
+
