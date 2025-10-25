@@ -511,3 +511,17 @@ pred_sarima_manual_final_val
 exp(pred_sarima_manual_final$lower)
 exp(pred_sarima_manual_final$upper)
 
+# Guardar los resultados
+
+# Crear data frame con año, trimestre y predicciones
+predicciones_PIB <- data.frame(
+  Anio = c(2022, 2022),
+  Trimestre = c("Q3", "Q4"),
+  Prediccion_PIB = c(pred_sarima_manual_final_val[1], pred_sarima_manual_final_val[2])
+)
+
+# Verificar la tabla
+print(predicciones_PIB)
+
+# Guardar como archivo RDS
+saveRDS(predicciones_PIB, file = "Datos/Resultados/Pred_PIB_Q3_Q4.rds")
