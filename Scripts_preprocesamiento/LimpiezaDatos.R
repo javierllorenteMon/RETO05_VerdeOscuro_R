@@ -26,7 +26,6 @@ miss_var_summary(pib_ipc_ITA)
 miss_var_summary(exogenas_ITA)
 
 # Rellenar datos faltantes (son pocos asi que se buscan en internet y se imputan a mano)
-pib_ipc_ITA$GDP.billion.currency.units[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 500.653
 pib_ipc_ITA$Consumer.Price.Index..CPI.[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 114.2
 
 exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 1922.92
@@ -98,7 +97,7 @@ SMI_ITA_M <- exogenas_ITA %>%
             SMI_M = as.numeric(Stock.market.index))
 
 # Convertir a series temporales trimestrales
-PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 2), frequency = 4)
 IPC_TS <- ts(ipc_ITA$IPC_t, start = c(min(ipc_ITA$Year), min(ipc_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 MS_TS <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 UR_TS <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 3), frequency = 4)
