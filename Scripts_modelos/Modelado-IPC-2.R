@@ -143,26 +143,41 @@ checkresiduals(fit_sarima)
 # Pronósticos en escala original (forecast revierte Box-Cox al llevar lambda dentro)
 h <- length(test_IPC)
 
+
+#Revertir arima manual
+x_bc <- BoxCox(train_IPC, lambda)
+fc_est <- forecast(fit_arimaEst, h = h)  
+
+y_seas_diff <- diff(x_bc, lag = 12)                                
+y_d1        <- diffinv(fc_est$mean, xi = tail(y_seas_diff, 1))[-1]   
+
+y_lvl_bc <- diffinv(y_d1, lag = 12, xi = tail(x_bc, 12))[-(1:12)]   
+
+fc_arimaEst_lvl <- ts(
+  InvBoxCox(y_lvl_bc, lambda),
+  start     = tsp(train_IPC)[2] + 1 / frequency(train_IPC),
+  frequency = frequency(train_IPC)
+)
+
 fc_arima1 <- forecast(fit_arima1, h = h)
-fc_arimaEst <- forecast(fit_arimaEst, h = h)
 fc_arima2 <- forecast(fit_arima2, h = h)
 fc_sarima <- forecast(fit_sarima, h = h)
 
 fc_list <- list(
   `ARIMA1` = forecast(fit_arima1, h=h),
-  `ARIMAEst` = forecast(fc_arimaEst, h=h),
+  `ARIMAEst` = structure(list(mean = fc_arimaEst_lvl), class = "forecast"),
   `ARIMA2` = forecast(fit_arima2, h=h),
   `SARIMA` = forecast(fit_sarima, h=h)
 )
 
 # Comparación rápida contra test
 autoplot(fc_arima1) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA1 vs Test")
-autoplot(fc_arimaEst) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA2 vs Test")
+autoplot(fc_arimaEst_lvl) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA2 vs Test")
 autoplot(fc_arima2) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA2 vs Test")
 autoplot(fc_sarima) + autolayer(test_IPC, series="Test") + ggtitle("SARIMA vs Test")
 
 accuracy(fc_arima1$mean, test_IPC)
-accuracy(fc_arimaEst$mean, test_IPC)
+accuracy(fc_arimaEst_lvl, test_IPC)
 accuracy(fc_arima2$mean, test_IPC)
 accuracy(fc_sarima$mean, test_IPC)
 
@@ -485,5 +500,7 @@ checkresiduals(ARIMAX_MS_FULL)
 
 saveRDS(pred_test_tbl, "Datos/Resultados/Pred_IPC_Test_2022.rds")
 saveRDS(pred_q4_tbl,   "Datos/Resultados/Pred_IPC_2022_Q4.rds")
+saveRDS(FC_TEST, "Datos/Resultados/FC_TEST_IPC.rds")
+saveRDS(FC_FUT,  "Datos/Resultados/FC_FUT_IPC.rds")
 
 
