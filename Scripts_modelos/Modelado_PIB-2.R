@@ -162,11 +162,23 @@ pred_PIB_sarima_manual <- ts(pred_PIB_sarima_manual,
 accuracy_PIB_sarima_manual <- accuracy(pred_PIB_sarima_manual, test_PIB)
 print(accuracy_PIB_sarima_manual)
 
+# --- CORRELACIONES PARA ARIMAX ---
+
+# Correlaciones simples
+correlaciones <- cor(cbind(train_PIB_est, X_train_est))
+correlaciones
+
+# Correlación cruzada entre (con esto vemos la correlacion con reazgo)
+ccf(train_PIB_est, train_MS_est, main = "Cross-correlation PIB - MS") # hay picos significativos
+ccf(train_PIB_est, train_UR_est, main = "Cross-correlation PIB - UR")
+ccf(train_PIB_est, train_SMI_est, main = "Cross-correlation PIB - SMI")
+
+# solo metemos MS en arimax (es la unica con crrelacion)
 
 # --- ARIMAX (con auto.arima) ---
 # Entrenamiento con auto.arima + variables exógenas
 modelo_PIB_ARIMAX_auto <- auto.arima(train_PIB,
-                                     xreg = X_train,
+                                     xreg = train_MS,
                                      lambda = 0,         # para log-transform interna
                                      seasonal = FALSE,
                                      stepwise = FALSE,
@@ -177,7 +189,7 @@ checkresiduals(modelo_PIB_ARIMAX_auto)
 
 # Predicción sobre el test
 pred_PIB_ARIMAX_auto <- forecast(modelo_PIB_ARIMAX_auto,
-                                 xreg = X_test,
+                                 xreg = test_MS,
                                  h = length(test_PIB),
                                  biasadj = TRUE)
 
@@ -188,22 +200,21 @@ print(accuracy_PIB_ARIMAX_auto)
 # --- ARIMAX manual (con serie estacionaria) ---
 
 # Comprobar longitudes despues de diferenciar las series
-cat("length(train_PIB):", length(train_PIB), "\n")
 cat("length(train_PIB_est):", length(train_PIB_est), "\n")
 cat("length(train_MS_est):", length(train_MS_est), "\n")
-cat("length(train_UR_est):", length(train_UR_est), "\n")
-cat("length(train_SMI_est):", length(train_SMI_est), "\n")
 
 # La serie de MS es mas larga porque le hemos aplicado una diferencia menos asi que la ajustamos
 train_MS_est <- tail(train_MS_est, 79)
-X_train_est <- cbind(MS = train_MS_est, UR = train_UR_est, SMI = train_SMI_est)
+X_train_est <- cbind(MS = train_MS_est)
 
 modelo_PIB_ARIMAX_manual <- arima(train_PIB_est, order = c(3,0,3), xreg = X_train_est)
 summary(modelo_PIB_ARIMAX_manual)
 checkresiduals(modelo_PIB_ARIMAX_manual)
 
+X_test_est <- cbind(MS = test_MS_est)
+
 pred_ARIMAX_manual <- predict(modelo_PIB_ARIMAX_manual,
-                              n.ahead = nrow(X_test_est),
+                              n.ahead = length(X_test_est),
                               newxreg = X_test_est)
 
 # Revertir 
@@ -216,7 +227,7 @@ pred_PIB_ARIMAX_manual <- exp(pred_PIB_log_inv[-c(1,2)])  # ahora en escala orig
 test_PIB_adj <- window(test_PIB, end = time(test_PIB)[length(pred_PIB_ARIMAX_manual)])
 
 accuracy_PIB_ARIMAX_manual <- accuracy(pred_PIB_ARIMAX_manual, test_PIB_adj)
-print(accuracy_PIB_ARIMAX_manual)
+accuracy_PIB_ARIMAX_manual
 
 
 ################################################################################
@@ -326,16 +337,12 @@ for(i in train_size:(n-1)) {
   
   # Exógenas hasta ese punto
   train_MS_cv <- window(MS_sinO, end = time(MS_sinO)[i])
-  train_UR_cv <- window(UR_sinO, end = time(UR_sinO)[i])
-  train_SMI_cv <- window(SMI_sinO, end = time(SMI_sinO)[i])
   
   # Exógenas para el siguiente paso
   next_MS <- MS_sinO[i+1]
-  next_UR <- UR_sinO[i+1]
-  next_SMI <- SMI_sinO[i+1]
   
-  X_train_cv <- cbind(MS = train_MS_cv, UR = train_UR_cv, SMI = train_SMI_cv)
-  X_next_cv <- matrix(c(next_MS, next_UR, next_SMI), nrow = 1)
+  X_train_cv <- as.matrix(train_MS_cv)
+  X_next_cv <- matrix(next_MS, nrow = 1)
   
   # --- ARIMA manual ---
   fit_manual <- try(arima(diff(log(train_PIB_cv), differences = 2), order = c(3,0,3)), silent = TRUE)
@@ -376,23 +383,17 @@ for(i in train_size:(n-1)) {
     pred_arimax_auto_cv[i - train_size + 1] <- as.numeric(fc_arimax_auto$mean)
   }
   
-  # --- ARIMAX manual (series diferenciadas) ---
+  # --- ARIMAX manual  ---
   # Crear series estacionarias
   train_PIB_log_cv <- log(train_PIB_cv)
   train_PIB_est_cv <- diff(train_PIB_log_cv, differences = 2)
   train_MS_est_cv <- diff(train_MS_cv, differences = 2)
-  train_UR_est_cv <- diff(train_UR_cv, differences = 2)
-  train_SMI_est_cv <- diff(train_SMI_cv, differences = 2)
   
   # Matriz exógenas estacionarias
-  X_train_est_cv <- cbind(MS = train_MS_est_cv, UR = train_UR_est_cv, SMI = train_SMI_est_cv)
+  X_train_est_cv <- as.matrix(train_MS_est_cv)
   
   # Para el siguiente paso, usar las últimas diferencias (aproximación simple)
-  X_next_est_cv <- matrix(c(
-    tail(diff(train_MS_cv, differences = 2), 1),
-    tail(diff(train_UR_cv, differences = 2), 1),
-    tail(diff(train_SMI_cv, differences = 2), 1)
-  ), nrow = 1)
+  X_next_est_cv <- matrix(tail(diff(train_MS_cv, differences = 2), 1), nrow = 1)
   
   fit_arimax_manual <- try(arima(train_PIB_est_cv, order = c(3,0,3), xreg = X_train_est_cv), silent = TRUE)
   if(!inherits(fit_arimax_manual, "try-error")) {
