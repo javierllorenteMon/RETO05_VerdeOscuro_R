@@ -63,8 +63,7 @@ nsdiffs(train_IPC)
 acf(train_IPC)
 
 # Diferencias para estacionarizar
-train_IPC_est <-  diff(diff( diff(log(train_IPC), lag = 36, differences = 1), differences = 1 ))
-
+train_IPC_est <-  diff( diff(log(train_IPC), lag = 12), differences = 1)
 
 # Comprobar estacionariedad
 test_estacionariedad(train_IPC_est)
