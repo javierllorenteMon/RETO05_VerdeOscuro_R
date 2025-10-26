@@ -113,6 +113,9 @@ tasa_crecimiento_precios <- cargar_archivo_istat('tasa_crecimiento_trimestral_pr
 # CARGAR EL ARCHIVO DE TIPOS DE INTERÉS A LARGO PLAZO
 tipos_interes_largo_plazo <- cargar_archivo_istat('tipos_interes_largo_plazo_trimestral_italia.csv')
 
+# CARGAR EL ARCHIVO DE PIB REAL LIMPIO
+pib_real_limpio <- cargar_archivo_istat('PIB_real_limpio.csv')
+
 # 7. Preparar datos ISTAT
 cat("\n=== PREPARANDO DATOS ISTAT ===\n")
 
@@ -300,6 +303,63 @@ if(!is.null(tipos_interes_largo_plazo)) {
                                      NA))
 }
 
+# PREPARAR EL ARCHIVO DE PIB REAL LIMPIO - VERSIÓN CORREGIDA PARA ESTRUCTURA DIFERENTE
+if(!is.null(pib_real_limpio)) {
+  cat("✓ Preparando datos de PIB real limpio\n")
+  
+  # Verificar la estructura REAL del archivo
+  cat("  Estructura REAL del archivo PIB real limpio:\n")
+  cat("  - Nombres de columnas:", names(pib_real_limpio), "\n")
+  cat("  - Dimensiones:", dim(pib_real_limpio), "\n")
+  cat("  - Primera fila:\n")
+  print(head(pib_real_limpio, 2))
+  
+  # El archivo tiene SOLO UNA columna que combina fecha y valor - separarlos
+  pib_real_limpio_clean <- pib_real_limpio %>%
+    # Extraer fecha y valor de la única columna
+    mutate(
+      # Extraer la fecha (parte antes del primer punto)
+      observation_date = as.Date(str_extract(observation_date_clvmnacscab1gqit, "^[^.]*")),
+      # Extraer el valor (parte después del primer punto)
+      PIB_real_limpio = as.numeric(str_extract(observation_date_clvmnacscab1gqit, "(?<=\\.).*"))
+    ) %>%
+    # Verificar que la extracción funcionó
+    filter(!is.na(observation_date) & !is.na(PIB_real_limpio)) %>%
+    # Extraer año y trimestre
+    mutate(
+      Year = year(observation_date),
+      Quarter = case_when(
+        month(observation_date) %in% 1:3 ~ "Q1",
+        month(observation_date) %in% 4:6 ~ "Q2", 
+        month(observation_date) %in% 7:9 ~ "Q3",
+        month(observation_date) %in% 10:12 ~ "Q4"
+      )
+    ) %>%
+    # Agrupar por trimestre y tomar el último valor del trimestre
+    group_by(Year, Quarter) %>%
+    summarise(
+      PIB_real_limpio = last(PIB_real_limpio),  # Último valor del trimestre
+      .groups = 'drop'
+    ) %>%
+    mutate(Periodo = paste(Year, Quarter)) %>%
+    select(Periodo, PIB_real_limpio)
+  
+  cat("  - Períodos disponibles después de limpieza:", nrow(pib_real_limpio_clean), "\n")
+  cat("  - Rango:", min(pib_real_limpio_clean$Periodo), "a", max(pib_real_limpio_clean$Periodo), "\n")
+  cat("  - Primeros registros:\n")
+  print(head(pib_real_limpio_clean, 5))
+  
+  # Unir al dataframe ISTAT completo
+  istat_completo <- istat_completo %>% 
+    left_join(pib_real_limpio_clean, by = "Periodo")
+  
+  # Verificar que se unió correctamente
+  cat("  - Verificación de unión - períodos con PIB real:", sum(!is.na(istat_completo$PIB_real_limpio)), "\n")
+  
+} else {
+  cat("✗ No se encontró PIB_real_limpio.csv - variable no se incluirá\n")
+}
+
 # 8. Unificar todos los datos
 cat("\n=== UNIFICANDO TODOS LOS DATOS ===\n")
 
@@ -313,6 +373,27 @@ italia_trimestral <- italia_pib_trimestral %>%
             by = "Periodo") %>%
   left_join(istat_completo %>% select(-Year, -Quarter), 
             by = "Periodo")
+
+# VERIFICACIÓN ESPECIAL PARA PIB REAL LIMPIO
+cat("\n=== VERIFICACIÓN PIB REAL LIMPIO DESPUÉS DE UNIÓN ===\n")
+if("PIB_real_limpio" %in% names(italia_trimestral)) {
+  cat("✓ PIB_real_limpio está en italia_trimestral\n")
+  pib_real_verif <- italia_trimestral %>% 
+    select(Periodo, PIB_real_limpio) %>% 
+    filter(!is.na(PIB_real_limpio))
+  cat("  - Períodos con datos:", nrow(pib_real_verif), "\n")
+  cat("  - Rango:", min(pib_real_verif$Periodo), "a", max(pib_real_verif$Periodo), "\n")
+  print(head(pib_real_verif, 5))
+} else {
+  cat("✗ PIB_real_limpio NO está en italia_trimestral - forzando inclusión...\n")
+  
+  # Forzar la inclusión si no se unió correctamente
+  if(exists('pib_real_limpio_clean')) {
+    italia_trimestral <- italia_trimestral %>%
+      left_join(pib_real_limpio_clean, by = "Periodo")
+    cat("  - Inclusión forzada completada\n")
+  }
+}
 
 # 9. Limpiar y enriquecer dataframe final CON PORCENTAJES TRIMESTRALES
 cat("\n=== CREANDO DATAFRAME FINAL CON PORCENTAJES TRIMESTRALES ===\n")
@@ -330,6 +411,13 @@ italia_trimestral <- italia_trimestral %>%
     
     # Porcentaje de cambio del IPC trimestral  
     IPC_pct_cambio = (Consumer.Price.Index..CPI. / lag(Consumer.Price.Index..CPI.) - 1) * 100,
+    
+    # Porcentaje de cambio del PIB REAL limpio trimestral - CORREGIDO
+    PIB_real_limpio_pct_cambio = if('PIB_real_limpio' %in% names(.)) {
+      (PIB_real_limpio / lag(PIB_real_limpio) - 1) * 100
+    } else {
+      NA_real_
+    },
     
     # Porcentaje de cambio del empleo trimestral (si existe) - CORREGIDO
     Empleo_pct_cambio = if('EMPLEO' %in% names(.)) (EMPLEO / lag(EMPLEO) - 1) * 100 else NA_real_,
@@ -375,6 +463,8 @@ italia_trimestral <- italia_trimestral %>%
     Country, Periodo,
     # Variables macroeconómicas ORIGINALES
     GDP.billion.currency.units, Consumer.Price.Index..CPI.,
+    # PIB REAL limpio - NUEVO
+    matches("PIB_real_limpio"),
     # Porcentajes de cambio TRIMESTRALES (NUEVAS VARIABLES)
     matches("_pct_cambio"),
     # Empleo
@@ -400,6 +490,76 @@ italia_trimestral <- italia_trimestral %>%
   ) %>%
   # Eliminar columnas totalmente vacías
   select(where(~!all(is.na(.))))
+
+# CALCULAR EL DEFLACTOR DEL PIB Y AGREGARLO AL DATAFRAME
+cat("\n=== CALCULANDO DEFLACTOR DEL PIB ===\n")
+
+# Verificar que tenemos las variables necesarias
+if("GDP.billion.currency.units" %in% names(italia_trimestral) & "PIB_real_limpio" %in% names(italia_trimestral)) {
+  
+  # Calcular el deflactor del PIB
+  italia_trimestral <- italia_trimestral %>%
+    mutate(
+      # Deflactor del PIB = (PIB Nominal / PIB Real) × 100
+      Deflactor_PIB = (GDP.billion.currency.units / PIB_real_limpio) * 100,
+      
+      # Tasa de crecimiento trimestral del deflactor
+      Deflactor_pct_cambio = (Deflactor_PIB / lag(Deflactor_PIB) - 1) * 100
+    )
+  
+  cat("✓ Deflactor del PIB calculado correctamente\n")
+  
+  # Mostrar estadísticas del deflactor
+  deflactor_stats <- italia_trimestral %>%
+    filter(!is.na(Deflactor_PIB)) %>%
+    summarise(
+      Periodos = n(),
+      Media = mean(Deflactor_PIB, na.rm = TRUE),
+      Mediana = median(Deflactor_PIB, na.rm = TRUE),
+      Minimo = min(Deflactor_PIB, na.rm = TRUE),
+      Maximo = max(Deflactor_PIB, na.rm = TRUE),
+      Desviacion = sd(Deflactor_PIB, na.rm = TRUE)
+    )
+  
+  cat("Estadísticas del Deflactor del PIB:\n")
+  print(deflactor_stats)
+  
+  # Comparar con IPC
+  if("Consumer.Price.Index..CPI." %in% names(italia_trimestral)) {
+    comparacion <- italia_trimestral %>%
+      filter(!is.na(Deflactor_PIB) & !is.na(Consumer.Price.Index..CPI.)) %>%
+      summarise(
+        Correlacion_Deflactor_IPC = cor(Deflactor_PIB, Consumer.Price.Index..CPI., use = "complete.obs"),
+        Diferencia_Media = mean(Deflactor_PIB - Consumer.Price.Index..CPI., na.rm = TRUE)
+      )
+    cat("\nComparación Deflactor vs IPC:\n")
+    print(comparacion)
+  }
+  
+} else {
+  cat("✗ No se pueden calcular el deflactor - faltan variables necesarias\n")
+  cat("Variables disponibles:", names(italia_trimestral)[grepl("PIB|GDP", names(italia_trimestral))], "\n")
+}
+
+# VERIFICACIÓN FINAL DEL PIB REAL LIMPIO
+cat("\n=== VERIFICACIÓN FINAL PIB REAL LIMPIO ===\n")
+cat("Variables de PIB disponibles:\n")
+pib_vars <- names(italia_trimestral)[grepl("PIB|GDP", names(italia_trimestral))]
+print(pib_vars)
+
+if("PIB_real_limpio" %in% names(italia_trimestral)) {
+  pib_final <- italia_trimestral %>%
+    select(Periodo, PIB_real_limpio, PIB_real_limpio_pct_cambio) %>%
+    filter(!is.na(PIB_real_limpio))
+  
+  cat("✓ PIB real limpio cargado correctamente\n")
+  cat("  - Total de períodos con datos:", nrow(pib_final), "\n")
+  cat("  - Rango temporal:", min(pib_final$Periodo), "a", max(pib_final$Periodo), "\n")
+  cat("  - Muestra de datos:\n")
+  print(head(pib_final, 10))
+} else {
+  cat("✗ ERROR: PIB_real_limpio no se cargó correctamente\n")
+}
 
 # 10. ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES
 cat("\n=== ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES TRIMESTRALES ===\n")
@@ -991,6 +1151,133 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data) &
   cat("✗ No se pueden crear gráficos comparativos - faltan variables\n")
 }
 
+# GRÁFICO ESPECIAL PARA PIB REAL LIMPIO
+cat("\n=== GRÁFICO ESPECIAL: PIB REAL LIMPIO ===\n")
+
+if("PIB_real_limpio" %in% names(italia_plot_data)) {
+  
+  # Filtrar datos con PIB real limpio
+  pib_real_plot_data <- italia_plot_data %>% filter(!is.na(PIB_real_limpio))
+  
+  # Crear texto para hover
+  hover_text_pib_real <- paste(
+    "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+    "<b>PIB Real:</b> %{y:.0f}<br>",
+    if("PIB_real_limpio_pct_cambio" %in% names(italia_plot_data)) {
+      "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>"
+    } else {""},
+    "<extra></extra>"
+  )
+  
+  # Crear gráfico Plotly para PIB real limpio
+  pib_real_plotly <- plot_ly(pib_real_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~PIB_real_limpio, 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_376_C, width = 3),  # Verde brillante
+              marker = list(color = PANTONE_376_C, size = 6, opacity = 0.8),
+              name = 'PIB Real Limpio',
+              customdata = if("PIB_real_limpio_pct_cambio" %in% names(italia_plot_data)) ~PIB_real_limpio_pct_cambio else NULL,
+              hovertemplate = hover_text_pib_real) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución del PIB Real Limpio - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_376_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_376_C),
+        tickfont = list(color = PANTONE_376_C)
+      ),
+      yaxis = list(
+        title = "PIB Real Limpio",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_376_C),
+        tickfont = list(color = PANTONE_376_C)
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_376_C, size = 12),
+        bordercolor = PANTONE_376_C
+      ),
+      showlegend = FALSE
+    )
+  
+  print(pib_real_plotly)
+  cat("✓ Gráfico Plotly del PIB Real creado y mostrado\n")
+  
+} else {
+  cat("✗ Variable PIB_real_limpio no encontrada\n")
+}
+
+# GRÁFICO ESPECIAL PARA EL DEFLACTOR DEL PIB
+cat("\n=== GRÁFICO ESPECIAL: DEFLACTOR DEL PIB ===\n")
+
+if("Deflactor_PIB" %in% names(italia_plot_data)) {
+  
+  # Filtrar datos con deflactor del PIB
+  deflactor_plot_data <- italia_plot_data %>% filter(!is.na(Deflactor_PIB))
+  
+  # Crear texto para hover
+  hover_text_deflactor <- paste(
+    "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+    "<b>Deflactor PIB:</b> %{y:.2f}<br>",
+    if("Deflactor_pct_cambio" %in% names(italia_plot_data)) {
+      "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>"
+    } else {""},
+    "<extra></extra>"
+  )
+  
+  # Crear gráfico Plotly para el deflactor del PIB
+  deflactor_plotly <- plot_ly(deflactor_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~Deflactor_PIB, 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = '#FF6B00', width = 3),  # Naranja para diferenciar
+              marker = list(color = '#FF6B00', size = 6, opacity = 0.8),
+              name = 'Deflactor PIB',
+              customdata = if("Deflactor_pct_cambio" %in% names(italia_plot_data)) ~Deflactor_pct_cambio else NULL,
+              hovertemplate = hover_text_deflactor) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución del Deflactor del PIB - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = '#FF6B00')
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = '#FF6B00'),
+        tickfont = list(color = '#FF6B00')
+      ),
+      yaxis = list(
+        title = "Deflactor del PIB (2015=100)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = '#FF6B00'),
+        tickfont = list(color = '#FF6B00')
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = '#FF6B00', size = 12),
+        bordercolor = '#FF6B00'
+      ),
+      showlegend = FALSE
+    )
+  
+  print(deflactor_plotly)
+  cat("✓ Gráfico Plotly del Deflactor del PIB creado y mostrado\n")
+}
+
 # RESUMEN ESTADÍSTICO
 cat("\n=== RESUMEN ESTADÍSTICO: GDP E INFLACIÓN ===\n")
 
@@ -1052,316 +1339,80 @@ if("IPC_pct_cambio" %in% names(italia_plot_data)) {
   resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, cpi_pct_summary)
 }
 
+# Añadir estadísticas del PIB real limpio
+if("PIB_real_limpio" %in% names(italia_plot_data)) {
+  pib_real_summary <- italia_plot_data %>%
+    filter(!is.na(PIB_real_limpio)) %>%
+    summarise(
+      Variable = "PIB Real Limpio",
+      Media = round(mean(PIB_real_limpio, na.rm = TRUE), 4),
+      Mediana = round(median(PIB_real_limpio, na.rm = TRUE), 4),
+      Desviacion = round(sd(PIB_real_limpio, na.rm = TRUE), 4),
+      Minimo = round(min(PIB_real_limpio, na.rm = TRUE), 4),
+      Maximo = round(max(PIB_real_limpio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(PIB_real_limpio))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, pib_real_summary)
+}
+
+if("PIB_real_limpio_pct_cambio" %in% names(italia_plot_data)) {
+  pib_real_pct_summary <- italia_plot_data %>%
+    filter(!is.na(PIB_real_limpio_pct_cambio)) %>%
+    summarise(
+      Variable = "Crecimiento PIB Real Trimestral (%)",
+      Media = round(mean(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(PIB_real_limpio_pct_cambio))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, pib_real_pct_summary)
+}
+
+# Añadir estadísticas del deflactor del PIB
+if("Deflactor_PIB" %in% names(italia_plot_data)) {
+  deflactor_summary <- italia_plot_data %>%
+    filter(!is.na(Deflactor_PIB)) %>%
+    summarise(
+      Variable = "Deflactor PIB",
+      Media = round(mean(Deflactor_PIB, na.rm = TRUE), 4),
+      Mediana = round(median(Deflactor_PIB, na.rm = TRUE), 4),
+      Desviacion = round(sd(Deflactor_PIB, na.rm = TRUE), 4),
+      Minimo = round(min(Deflactor_PIB, na.rm = TRUE), 4),
+      Maximo = round(max(Deflactor_PIB, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Deflactor_PIB))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, deflactor_summary)
+}
+
+if("Deflactor_pct_cambio" %in% names(italia_plot_data)) {
+  deflactor_pct_summary <- italia_plot_data %>%
+    filter(!is.na(Deflactor_pct_cambio)) %>%
+    summarise(
+      Variable = "Inflación Deflactor Trimestral (%)",
+      Media = round(mean(Deflactor_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(Deflactor_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(Deflactor_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(Deflactor_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(Deflactor_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Deflactor_pct_cambio))
+    )
+  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, deflactor_pct_summary)
+}
+
 print(resumen_gdp_cpi)
 
-cat("\n=== PROCESO COMPLETADO ===\n")
-cat("✓ 3 Gráficos Plotly específicos creados\n")
-cat("✓ Paleta Pantone aplicada consistentemente\n")
-cat("✓ Porcentajes de cambio visibles solo al pasar el ratón (hover)\n")
-cat("✓ Gráfico comparativo con mismo estilo que individuales\n")
-cat("✓ Diseño profesional y cohesivo\n")
-cat("✓ Resumen estadístico generado\n")
-################################################################################
-################################################################################
-################################################################################
-# 16. BOXPLOTS INDIVIDUALES PARA TODAS LAS VARIABLES NUMÉRICAS - TODAS LAS PÁGINAS A LA VEZ
-cat("\n=== CREANDO BOXPLOTS INDIVIDUALES PARA TODAS LAS VARIABLES ===\n")
-
-# Obtener solo las variables numéricas (excluyendo identificadores)
-variables_numericas <- italia_trimestral %>%
-  select(where(is.numeric)) %>%
-  select(-any_of(c("Year", "Quarter")))  # Excluir columnas no numéricas si existen
-
-cat("Número de variables numéricas:", ncol(variables_numericas), "\n")
-cat("Variables a graficar:", names(variables_numericas), "\n")
-
-# Función CORREGIDA para crear boxplot individual
-crear_boxplot_individual <- function(data, variable_name) {
-  # Limpiar nombre para el título
-  nombre_limpio <- gsub("\\.", " ", variable_name)
-  nombre_limpio <- gsub("_", " ", nombre_limpio)
-  nombre_limpio <- str_to_title(nombre_limpio)
-  
-  # Calcular estadísticas básicas para el subtítulo
-  stats <- data %>%
-    summarise(
-      media = round(mean(!!sym(variable_name), na.rm = TRUE), 2),
-      mediana = round(median(!!sym(variable_name), na.rm = TRUE), 2),
-      desviacion = round(sd(!!sym(variable_name), na.rm = TRUE), 2),
-      minimo = round(min(!!sym(variable_name), na.rm = TRUE), 2),
-      maximo = round(max(!!sym(variable_name), na.rm = TRUE), 2),
-      na_count = sum(is.na(!!sym(variable_name))))
-      
-      # Crear el boxplot CORREGIDO
-      ggplot(data, aes(x = "", y = !!sym(variable_name))) +
-        geom_boxplot(
-          fill = PANTONE_9043_C, 
-          color = PANTONE_262_C,
-          alpha = 0.7,
-          outlier.color = PANTONE_220_C,
-          outlier.size = 2
-        ) +
-        stat_summary(
-          fun = mean, 
-          geom = "point", 
-          shape = 18, 
-          size = 3, 
-          color = PANTONE_376_C
-        ) +
-        labs(
-          title = nombre_limpio,
-          subtitle = paste0(
-            "Media: ", stats$media, 
-            " | Mediana: ", stats$mediana,
-            " | SD: ", stats$desviacion,
-            "\nMín: ", stats$minimo, 
-            " | Máx: ", stats$maximo,
-            " | NA: ", stats$na_count
-          ),
-          x = NULL,
-          y = NULL
-        ) +
-        theme_minimal() +
-        theme(
-          plot.title = element_text(
-            size = 11, 
-            face = "bold", 
-            color = PANTONE_262_C,
-            hjust = 0.5
-          ),
-          plot.subtitle = element_text(
-            size = 8, 
-            color = "darkgray",
-            hjust = 0.5
-          ),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 8),
-          panel.grid.major = element_line(color = "gray90"),
-          panel.grid.minor = element_blank(),
-          plot.background = element_rect(fill = "white", color = NA),
-          panel.background = element_rect(fill = "white", color = NA)
-        )
-}
-
-# Crear todos los boxplots individuales
-boxplots_list <- list()
-
-for (i in 1:ncol(variables_numericas)) {
-  var_name <- names(variables_numericas)[i]
-  cat("Creando boxplot para:", var_name, "\n")
-  
-  # Filtrar datos sin NA para esta variable
-  datos_variable <- variables_numericas %>% 
-    select(all_of(var_name)) %>% 
-    filter(!is.na(!!sym(var_name)))
-  
-  if (nrow(datos_variable) > 0) {
-    boxplots_list[[var_name]] <- crear_boxplot_individual(datos_variable, var_name)
+# VERIFICACIÓN FINAL DE LAS NUEVAS VARIABLES
+cat("\n=== VERIFICACIÓN FINAL: VARIABLES DEL DEFLACTOR ===\n")
+cat("Variables agregadas al dataframe italia_trimestral:\n")
+nuevas_variables <- c("Deflactor_PIB", "Deflactor_pct_cambio")
+for(var in nuevas_variables) {
+  if(var %in% names(italia_trimestral)) {
+    cat("✓", var, "- Valores no NA:", sum(!is.na(italia_trimestral[[var]])), "\n")
+  } else {
+    cat("✗", var, "no encontrada\n")
   }
 }
 
-# ORGANIZAR TODAS LAS PÁGINAS A LA VEZ
-cat("\n=== ORGANIZANDO TODAS LAS PÁGINAS A LA VEZ ===\n")
-
-# Definir número de gráficos por página
-graficos_por_pagina <- 9  # 3x3 grid
-total_graficos <- length(boxplots_list)
-total_paginas <- ceiling(total_graficos / graficos_por_pagina)
-
-cat("Total de boxplots creados:", total_graficos, "\n")
-cat("Gráficos por página:", graficos_por_pagina, "\n")
-cat("Total de páginas necesarias:", total_paginas, "\n")
-
-# Función para crear una lista con todas las páginas
-crear_todas_las_paginas <- function(lista_boxplots, por_pagina = 9) {
-  total_paginas <- ceiling(length(lista_boxplots) / por_pagina)
-  todas_las_paginas <- list()
-  
-  for (pagina in 1:total_paginas) {
-    inicio <- (pagina - 1) * por_pagina + 1
-    fin <- min(pagina * por_pagina, length(lista_boxplots))
-    
-    if (inicio <= length(lista_boxplots)) {
-      cat("Preparando página", pagina, "- Gráficos", inicio, "a", fin, "\n")
-      
-      # Crear grid para esta página
-      pagina_actual <- do.call("grid.arrange", 
-                               c(lista_boxplots[inicio:fin], 
-                                 ncol = 3, 
-                                 nrow = 3,
-                                 top = paste("Boxplots de Variables - Italia Trimestral - Página", pagina, "de", total_paginas)))
-      
-      todas_las_paginas[[pagina]] <- pagina_actual
-    }
-  }
-  
-  return(todas_las_paginas)
-}
-
-# OPCIÓN 1: Mostrar todas las páginas en una ventana gráfica múltiple (si el dispositivo lo permite)
-cat("\n=== OPCIÓN 1: MOSTRAR TODAS LAS PÁGINAS EN UNA VENTANA GRÁFICA MÚLTIPLE ===\n")
-
-# Configurar ventana gráfica para múltiples páginas
-if (total_paginas > 1) {
-  # Intentar configurar múltiples paneles
-  tryCatch({
-    # Configurar layout según número de páginas
-    if (total_paginas <= 4) {
-      par(mfrow = c(2, 2))
-    } else if (total_paginas <= 6) {
-      par(mfrow = c(2, 3))
-    } else if (total_paginas <= 9) {
-      par(mfrow = c(3, 3))
-    } else {
-      par(mfrow = c(ceiling(sqrt(total_paginas)), ceiling(sqrt(total_paginas))))
-    }
-    
-    cat("Ventana gráfica configurada para", total_paginas, "páginas\n")
-  }, error = function(e) {
-    cat("No se pudo configurar ventana múltiple. Usando método alternativo.\n")
-  })
-}
-
-# OPCIÓN 2: Usar grid.arrange con marcos múltiples (MEJOR OPCIÓN)
-cat("\n=== OPCIÓN 2: CREAR SUPER-LAYOUT CON TODAS LAS PÁGINAS ===\n")
-
-# Calcular layout óptimo para todas las páginas
-filas_total <- ceiling(total_paginas / 2)  # 2 columnas
-columnas_total <- ifelse(total_paginas > 1, 2, 1)
-
-cat("Layout configurado:", filas_total, "filas x", columnas_total, "columnas\n")
-
-# Crear una función para mostrar todas las páginas a la vez
-mostrar_todas_las_paginas <- function() {
-  # Crear lista de todas las páginas
-  todas_las_paginas <- list()
-  
-  for (pagina in 1:total_paginas) {
-    inicio <- (pagina - 1) * graficos_por_pagina + 1
-    fin <- min(pagina * graficos_por_pagina, total_graficos)
-    
-    # Crear cada página individual
-    pagina_grid <- grid.arrange(
-      grobs = boxplots_list[inicio:fin],
-      ncol = 3,
-      nrow = 3,
-      top = textGrob(paste("Página", pagina, "de", total_paginas), 
-                     gp = gpar(fontsize = 16, fontface = "bold", col = PANTONE_262_C))
-    )
-    
-    todas_las_paginas[[pagina]] <- pagina_grid
-  }
-  
-  # Organizar todas las páginas en un super-layout
-  if (length(todas_las_paginas) > 0) {
-    # Usar grid.arrange para organizar las páginas
-    do.call(grid.arrange, c(todas_las_paginas, ncol = columnas_total))
-  }
-}
-
-# OPCIÓN 3: Método más simple - Crear un PDF temporal y mostrar todas las páginas
-cat("\n=== OPCIÓN 3: MÉTODO SIMPLIFICADO - MOSTRAR PÁGINA POR PÁGINA EN SECUENCIA ===\n")
-
-# Mostrar cada página en secuencia (todas visibles una tras otra)
-for (pagina in 1:total_paginas) {
-  cat("\n--- MOSTRANDO PÁGINA", pagina, "DE", total_paginas, "---\n")
-  
-  inicio <- (pagina - 1) * graficos_por_pagina + 1
-  fin <- min(pagina * graficos_por_pagina, total_graficos)
-  
-  # Mostrar página actual
-  grid.arrange(
-    grobs = boxplots_list[inicio:fin],
-    ncol = 3,
-    nrow = 3,
-    top = paste("Boxplots - Italia Trimestral - Página", pagina, "de", total_paginas)
-  )
-  
-  # Pausa opcional entre páginas (puedes comentar esta línea si quieres verlas todas rápido)
-  if (pagina < total_paginas) {
-    cat("Presiona Enter para ver la siguiente página...")
-    readline()
-  }
-}
-
-# OPCIÓN 4: Guardar y mostrar miniaturas de todas las páginas
-cat("\n=== OPCIÓN 4: CREAR RESUMEN CON MINIATURAS DE TODAS LAS PÁGINAS ===\n")
-
-# Crear una página de resumen con miniaturas de cada página
-crear_pagina_resumen <- function() {
-  # Crear miniaturas simplificadas para el resumen
-  boxplots_mini <- list()
-  
-  for (i in 1:min(6, total_graficos)) {  # Mostrar máximo 6 miniaturas
-    var_name <- names(boxplots_list)[i]
-    nombre_limpio <- gsub("\\.", " ", var_name)
-    nombre_limpio <- gsub("_", " ", nombre_limpio)
-    nombre_limpio <- str_to_title(nombre_limpio)
-    
-    if (length(nombre_limpio) > 20) {
-      nombre_limpio <- paste0(substr(nombre_limpio, 1, 20), "...")
-    }
-    
-    datos_variable <- variables_numericas %>% 
-      select(all_of(var_name)) %>% 
-      filter(!is.na(!!sym(var_name)))
-    
-    boxplot_mini <- ggplot(datos_variable, aes(x = "", y = !!sym(var_name))) +
-      geom_boxplot(fill = PANTONE_9043_C, color = PANTONE_262_C, alpha = 0.7) +
-      labs(title = nombre_limpio, x = NULL, y = NULL) +
-      theme_minimal() +
-      theme(
-        plot.title = element_text(size = 8, face = "bold"),
-        axis.text = element_text(size = 6),
-        plot.margin = unit(c(1, 1, 1, 1), "mm")
-      )
-    
-    boxplots_mini[[i]] <- boxplot_mini
-  }
-  
-  # Mostrar resumen
-  grid.arrange(
-    grobs = boxplots_mini,
-    ncol = 3,
-    nrow = 2,
-    top = paste("Resumen -", total_graficos, "variables en", total_paginas, "páginas")
-  )
-}
-
-# Mostrar página de resumen
-crear_pagina_resumen()
-
-# GUARDAR TODAS LAS PÁGINAS EN PDF
-cat("\n=== GUARDANDO TODAS LAS PÁGINAS EN PDF ===\n")
-
-#pdf("boxplots_italia_trimestral_todas_las_paginas.pdf", width = 16, height = 12)
-
-for (pagina in 1:total_paginas) {
-  cat("Guardando página", pagina, "en PDF...\n")
-  
-  inicio <- (pagina - 1) * graficos_por_pagina + 1
-  fin <- min(pagina * graficos_por_pagina, total_graficos)
-  
-  grid.arrange(
-    grobs = boxplots_list[inicio:fin],
-    ncol = 3,
-    nrow = 3,
-    top = paste("Boxplots de Variables - Italia Trimestral - Página", pagina, "de", total_paginas)
-  )
-}
-
-dev.off()
-cat("✓ Todas las páginas guardadas en: boxplots_italia_trimestral_todas_las_paginas.pdf\n")
-
-# RESUMEN FINAL
-cat("\n=== RESUMEN FINAL ===\n")
-cat("✓ Total de variables analizadas:", ncol(variables_numericas), "\n")
-cat("✓ Total de boxplots creados:", length(boxplots_list), "\n")
-cat("✓ Páginas generadas:", total_paginas, "\n")
-cat("✓ PDF con todas las páginas guardado\n")
-cat("✓ Se muestran todas las páginas en secuencia\n")
-cat("\n=== INSTRUCCIONES ===\n")
-cat("• Las páginas se muestran una tras otra en la ventana gráfica\n")
-cat("• Todas las páginas están guardadas en el PDF\n")
-cat("• Usa el botón 'Previous Plot' en RStudio para navegar entre páginas\n")
-cat("• El PDF contiene todas las páginas organizadas\n")
+str(italia_trimestral)

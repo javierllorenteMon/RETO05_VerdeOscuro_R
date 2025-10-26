@@ -414,3 +414,34 @@ tipos_interes_trimestral <- tipos_interes_italia %>%
 
 # Exportar resultados
 write_csv(tipos_interes_trimestral, "tipos_interes_largo_plazo_trimestral_italia.csv")
+
+################################################################################
+################################################################################
+################ "PIB Real" ####################################################
+################################################################################
+################################################################################
+
+PIB_real <- read_delim("Datos/Istat/PIB_real.csv",
+                       delim = ";",
+                       locale = locale(decimal_mark = ",")) 
+PIB_real_limpio <- PIB_real %>%
+  clean_names() %>%                      
+  distinct() %>%                          
+  remove_empty(which = c("rows", "cols")) %>%  
+  mutate(across(where(is.character), trimws))
+
+PIB_real_limpio <- PIB_real_limpio %>%
+  mutate(across(where(is.character),
+                ~ gsub(",", ".", .))) %>%         
+  mutate(across(where(~ all(grepl("^[0-9\\.]*$", .))),
+                ~ suppressWarnings(as.numeric(.))))
+
+if("fecha" %in% names(PIB_real_limpio)) {
+  PIB_real_limpio <- PIB_real_limpio %>%
+    mutate(fecha = as.Date(fecha, format = "%Y-%m-%d")) %>%
+    arrange(fecha)
+}
+
+PIB_real_limpio <- PIB_real_limpio %>%
+  filter(if_any(everything(), ~ !is.na(.)))
+write_csv(PIB_real_limpio, "PIB_real_limpio.csv")
