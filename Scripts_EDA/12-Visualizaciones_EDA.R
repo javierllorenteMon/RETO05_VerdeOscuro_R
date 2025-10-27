@@ -977,8 +977,8 @@ if("Precios_vivienda_pct_cambio" %in% names(italia_plot_data)) {
 # EXPORTACIÓN
 # =============================================================================
 
-# Función para exportar un gráfico a PDF
-exportar_a_pdf <- function(grafico, nombre_archivo, ancho = 12, alto = 8) {
+# Función para exportar un gráfico a PNG
+exportar_a_png <- function(grafico, nombre_archivo, ancho = 12, alto = 8, dpi = 150) {
   tryCatch({
     # Crear archivo HTML temporal
     archivo_temp <- tempfile(fileext = ".html")
@@ -986,14 +986,14 @@ exportar_a_pdf <- function(grafico, nombre_archivo, ancho = 12, alto = 8) {
     # Guardar como HTML
     htmlwidgets::saveWidget(grafico, archivo_temp, selfcontained = TRUE)
     
-    # Convertir a PDF - usando cliprect para recortar al área del gráfico
-    pdf_file <- paste0("Graficos/", nombre_archivo, ".pdf")
-    webshot2::webshot(archivo_temp, pdf_file, 
+    # Convertir a PNG
+    png_file <- paste0("Graficos/", nombre_archivo, ".png")
+    webshot2::webshot(archivo_temp, png_file, 
                       vwidth = ancho * 100, 
                       vheight = alto * 100,
                       cliprect = "viewport")  # Esto recorta al viewport del gráfico
     
-    cat("✓ Gráfico exportado:", pdf_file, "\n")
+    cat("✓ Gráfico exportado:", png_file, "\n")
     
     # Eliminar archivo temporal
     if (file.exists(archivo_temp)) {
@@ -1010,11 +1010,11 @@ exportar_a_pdf <- function(grafico, nombre_archivo, ancho = 12, alto = 8) {
       archivo_temp <- tempfile(fileext = ".html")
       htmlwidgets::saveWidget(grafico, archivo_temp, selfcontained = TRUE)
       
-      webshot2::webshot(archivo_temp, pdf_file, 
+      webshot2::webshot(archivo_temp, png_file, 
                         cliprect = "viewport")
       
-      if (file.exists(pdf_file)) {
-        cat("✓ Gráfico exportado (método alternativo):", pdf_file, "\n")
+      if (file.exists(png_file)) {
+        cat("✓ Gráfico exportado (método alternativo):", png_file, "\n")
         file.remove(archivo_temp)
         return(TRUE)
       }
@@ -1025,7 +1025,7 @@ exportar_a_pdf <- function(grafico, nombre_archivo, ancho = 12, alto = 8) {
 }
 
 # Función alternativa para gráficos específicos que puedan necesitar ajustes
-exportar_a_pdf_ajustado <- function(grafico, nombre_archivo, ancho = 10, alto = 6) {
+exportar_a_png_ajustado <- function(grafico, nombre_archivo, ancho = 10, alto = 6) {
   tryCatch({
     # Crear archivo HTML temporal
     archivo_temp <- tempfile(fileext = ".html")
@@ -1033,17 +1033,17 @@ exportar_a_pdf_ajustado <- function(grafico, nombre_archivo, ancho = 10, alto = 
     # Guardar como HTML
     htmlwidgets::saveWidget(grafico, archivo_temp, selfcontained = TRUE)
     
-    # Convertir a PDF con ajustes más agresivos
-    pdf_file <- paste0("Graficos/", nombre_archivo, ".pdf")
+    # Convertir a PNG con ajustes más agresivos
+    png_file <- paste0("Graficos/", nombre_archivo, ".png")
     
     # Intentar diferentes métodos de recorte
-    webshot2::webshot(archivo_temp, pdf_file, 
+    webshot2::webshot(archivo_temp, png_file, 
                       vwidth = ancho * 100, 
                       vheight = alto * 100,
                       cliprect = "viewport",
                       expand = c(-10, -10, -10, -10))  # Reducir márgenes
     
-    cat("✓ Gráfico exportado (ajustado):", pdf_file, "\n")
+    cat("✓ Gráfico exportado (ajustado):", png_file, "\n")
     
     # Eliminar archivo temporal
     if (file.exists(archivo_temp)) {
@@ -1057,9 +1057,9 @@ exportar_a_pdf_ajustado <- function(grafico, nombre_archivo, ancho = 10, alto = 
   })
 }
 
-# Función principal para exportar todos los gráficos a PDF
-exportar_todos_los_graficos_pdf <- function() {
-  cat("=== INICIANDO EXPORTACIÓN DE TODOS LOS GRÁFICOS A PDF ===\n\n")
+# Función principal para exportar todos los gráficos a PNG
+exportar_todos_los_graficos_png <- function() {
+  cat("=== INICIANDO EXPORTACIÓN DE TODOS LOS GRÁFICOS A PNG ===\n\n")
   
   # Crear directorio Graficos si no existe
   dir.create("Graficos", showWarnings = FALSE)
@@ -1071,77 +1071,77 @@ exportar_todos_los_graficos_pdf <- function() {
   # Exportar cada gráfico con la función mejorada
   
   if(exists("p1_pib_nominal")) {
-    resultados$pib_nominal <- exportar_a_pdf(p1_pib_nominal, "01_PIB_Nominal_Italia", 11, 7)
+    resultados$pib_nominal <- exportar_a_png(p1_pib_nominal, "01_PIB_Nominal_Italia", 11, 7)
     if(resultados$pib_nominal) contador <- contador + 1
   }
   
   if(exists("p2_crecimiento_pib")) {
-    resultados$crecimiento_pib <- exportar_a_pdf(p2_crecimiento_pib, "02_Crecimiento_PIB_Italia", 11, 7)
+    resultados$crecimiento_pib <- exportar_a_png(p2_crecimiento_pib, "02_Crecimiento_PIB_Italia", 11, 7)
     if(resultados$crecimiento_pib) contador <- contador + 1
   }
   
   if(exists("p3_deflactor")) {
-    resultados$deflactor <- exportar_a_pdf(p3_deflactor, "03_Deflactor_PIB_Italia", 11, 7)
+    resultados$deflactor <- exportar_a_png(p3_deflactor, "03_Deflactor_PIB_Italia", 11, 7)
     if(resultados$deflactor) contador <- contador + 1
   }
   
   if(exists("p4_inflacion")) {
-    resultados$inflacion <- exportar_a_pdf(p4_inflacion, "04_IPC_Italia", 11, 7)
+    resultados$inflacion <- exportar_a_png(p4_inflacion, "04_IPC_Italia", 11, 7)
     if(resultados$inflacion) contador <- contador + 1
   }
   
   if(exists("p5_inflacion_trimestral")) {
-    resultados$inflacion_trimestral <- exportar_a_pdf(p5_inflacion_trimestral, "05_Inflacion_Trimestral_Italia", 11, 7)
+    resultados$inflacion_trimestral <- exportar_a_png(p5_inflacion_trimestral, "05_Inflacion_Trimestral_Italia", 11, 7)
     if(resultados$inflacion_trimestral) contador <- contador + 1
   }
   
   if(exists("p6_empleo")) {
-    resultados$empleo <- exportar_a_pdf(p6_empleo, "06_Empleo_Desempleo_Italia", 11, 7)
+    resultados$empleo <- exportar_a_png(p6_empleo, "06_Empleo_Desempleo_Italia", 11, 7)
     if(resultados$empleo) contador <- contador + 1
   }
   
   if(exists("p7_salarios")) {
-    resultados$salarios <- exportar_a_pdf(p7_salarios, "07_Salarios_Italia", 11, 7)
+    resultados$salarios <- exportar_a_png(p7_salarios, "07_Salarios_Italia", 11, 7)
     if(resultados$salarios) contador <- contador + 1
   }
   
   if(exists("p8_productividad")) {
-    resultados$productividad <- exportar_a_pdf(p8_productividad, "08_Productividad_Laboral_Italia", 11, 7)
+    resultados$productividad <- exportar_a_png(p8_productividad, "08_Productividad_Laboral_Italia", 11, 7)
     if(resultados$productividad) contador <- contador + 1
   }
   
   if(exists("p9_comercio")) {
-    resultados$comercio <- exportar_a_pdf(p9_comercio, "09_Comercio_Exterior_Italia", 11, 7)
+    resultados$comercio <- exportar_a_png(p9_comercio, "09_Comercio_Exterior_Italia", 11, 7)
     if(resultados$comercio) contador <- contador + 1
   }
   
   if(exists("p10_balanza")) {
-    resultados$balanza <- exportar_a_pdf(p10_balanza, "10_Balanza_Comercial_Italia", 11, 7)
+    resultados$balanza <- exportar_a_png(p10_balanza, "10_Balanza_Comercial_Italia", 11, 7)
     if(resultados$balanza) contador <- contador + 1
   }
   
   if(exists("p11_finanzas")) {
-    resultados$finanzas <- exportar_a_pdf(p11_finanzas, "11_Finanzas_Publicas_Italia", 11, 7)
+    resultados$finanzas <- exportar_a_png(p11_finanzas, "11_Finanzas_Publicas_Italia", 11, 7)
     if(resultados$finanzas) contador <- contador + 1
   }
   
   if(exists("p12_deficit")) {
-    resultados$deficit <- exportar_a_pdf(p12_deficit, "12_Deficit_Superavit_Italia", 11, 7)
+    resultados$deficit <- exportar_a_png(p12_deficit, "12_Deficit_Superavit_Italia", 11, 7)
     if(resultados$deficit) contador <- contador + 1
   }
   
   if(exists("p13_interes")) {
-    resultados$interes <- exportar_a_pdf(p13_interes, "13_Tipo_Interes_Italia", 11, 7)
+    resultados$interes <- exportar_a_png(p13_interes, "13_Tipo_Interes_Italia", 11, 7)
     if(resultados$interes) contador <- contador + 1
   }
   
   if(exists("p14_confianza")) {
-    resultados$confianza <- exportar_a_pdf(p14_confianza, "14_Confianza_Consumidor_Italia", 11, 7)
+    resultados$confianza <- exportar_a_png(p14_confianza, "14_Confianza_Consumidor_Italia", 11, 7)
     if(resultados$confianza) contador <- contador + 1
   }
   
   if(exists("p15_crecimiento_vivienda")) {
-    resultados$vivienda <- exportar_a_pdf(p15_crecimiento_vivienda, "15_Precios_Vivienda_Italia", 11, 7)
+    resultados$vivienda <- exportar_a_png(p15_crecimiento_vivienda, "15_Precios_Vivienda_Italia", 11, 7)
     if(resultados$vivienda) contador <- contador + 1
   }
   
@@ -1151,8 +1151,8 @@ exportar_todos_los_graficos_pdf <- function() {
   return(resultados)
 }
 
-# Ejecutar la función para exportar todos los gráficos a PDF
-resultados_exportacion <- exportar_todos_los_graficos_pdf()
+# Ejecutar la función para exportar todos los gráficos a PNG
+resultados_exportacion <- exportar_todos_los_graficos_png()
 
 # Verificar si hay errores
 if (sum(unlist(resultados_exportacion)) < length(resultados_exportacion)) {
@@ -1164,19 +1164,19 @@ if (sum(unlist(resultados_exportacion)) < length(resultados_exportacion)) {
     }
   }
 } else {
-  cat("\n¡Todos los gráficos se exportaron exitosamente a PDF!\n")
+  cat("\n¡Todos los gráficos se exportaron exitosamente a PNG!\n")
 }
 
-# Función adicional para verificar el tamaño de los PDFs generados
-verificar_tamanos_pdf <- function() {
-  cat("\n=== VERIFICANDO TAMAÑOS DE PDFs ===\n")
-  archivos_pdf <- list.files("Graficos", pattern = "\\.pdf$", full.names = TRUE)
+# Función adicional para verificar el tamaño de los PNGs generados
+verificar_tamanos_png <- function() {
+  cat("\n=== VERIFICANDO TAMAÑOS DE PNGs ===\n")
+  archivos_png <- list.files("Graficos", pattern = "\\.png$", full.names = TRUE)
   
-  for (archivo in archivos_pdf) {
+  for (archivo in archivos_png) {
     info <- file.info(archivo)
     cat(basename(archivo), ": ", round(info$size/1024, 1), "KB\n", sep = "")
   }
 }
 
 # Ejecutar verificación de tamaños
-verificar_tamanos_pdf()
+verificar_tamanos_png()
