@@ -11,6 +11,7 @@ library(ggplot2)
 library(fpp2)
 library(tseries)
 library(gridExtra)
+library(cowplot)
 source("Scripts_Preprocesamiento/Funciones.R")
 
 ################################################################################
@@ -133,6 +134,7 @@ accuracy_PIB_Arima <- accuracy(pred_PIB_revert_A, test_PIB)
 
 # --- SARIMA (con auto.arima) ---
 modelo_PIB_sarima <- auto.arima(train_PIB, seasonal = TRUE, lambda = 0)
+summary(modelo_PIB_sarima)
 checkresiduals(modelo_PIB_sarima)
 pred_PIB_sarima <- forecast(modelo_PIB_sarima, h = length(test_PIB), biasadj = TRUE)
 accuracy_PIB_sarima <- accuracy(pred_PIB_sarima, test_PIB)
@@ -347,9 +349,9 @@ for(i in train_size:(n-1)) {
   # --- ARIMA manual ---
   fit_manual <- try(arima(diff(log(train_PIB_cv), differences = 2), order = c(3,0,3)), silent = TRUE)
   if(!inherits(fit_manual, "try-error")) {
-    fc_manual <- predict(fit_manual, n.ahead = h)
+    fc_manual <- forecast(fit_manual, h = h)
     last_vals <- log(tail(train_PIB_cv, 2))
-    pred_arima_manual_cv[i - train_size + 1] <- exp(diffinv(fc_manual$pred, differences = 2, xi = last_vals)[3])
+    pred_arima_manual_cv[i - train_size + 1] <- exp(diffinv(fc_manual$mean, differences = 2, xi = last_vals)[3])
   }
   
   # --- SARIMA ---
@@ -498,18 +500,101 @@ checkresiduals(modelo_sarima_manual_final)
 summary(modelo_sarima_manual_final)
 
 # Predicción para Q4 2022
-pred_sarima_manual_final <- forecast(modelo_sarima_manual_final, h = 2)  # h=1 trimestre
-pred_sarima_manual_final_val <- exp(pred_sarima_manual_final$mean)       # revertir log
+pred_sarima_manual_final <- forecast(modelo_sarima_manual_final, h = 2)  # h=2 trimestre
 
-# Graficar
-autoplot(pred_sarima_manual_final) +
-  ggtitle("Predicción PIB Q4 2022 (SARIMA manual)") +
-  ylab("PIB") + xlab("Trimestre")
+# Revertir todo a escala original
+pred_sarima_manual_final_exp <- pred_sarima_manual_final
+pred_sarima_manual_final_exp$mean <- exp(pred_sarima_manual_final$mean)
+pred_sarima_manual_final_exp$lower <- exp(pred_sarima_manual_final$lower)
+pred_sarima_manual_final_exp$upper <- exp(pred_sarima_manual_final$upper)
+pred_sarima_manual_final_exp$x <- exp(pred_sarima_manual_final$x)
 
 # Valores numéricos
-pred_sarima_manual_final_val
-exp(pred_sarima_manual_final$lower)
-exp(pred_sarima_manual_final$upper)
+pred_sarima_manual_final_exp
+
+# Graficar
+
+# --- DataFrames limpios ---
+df_total <- data.frame(
+  Trimestre = as.numeric(time(PIB_sinO)),
+  PIB = as.numeric(PIB_sinO)
+)
+
+df_pred <- data.frame(
+  Trimestre = as.numeric(time(pred_sarima_manual_final_exp$mean)),
+  Pred = as.numeric(pred_sarima_manual_final_exp$mean),
+  Lower = as.numeric(pred_sarima_manual_final_exp$lower[,2]),
+  Upper = as.numeric(pred_sarima_manual_final_exp$upper[,2])
+)
+
+# --- Añadir último punto histórico al inicio de la predicción para continuidad ---
+df_pred2 <- rbind(
+  data.frame(
+    Trimestre = tail(df_total$Trimestre, 1),
+    Pred = tail(df_total$PIB, 1),
+    Lower = tail(df_total$PIB, 1),
+    Upper = tail(df_total$PIB, 1)
+  ),
+  df_pred
+)
+
+# --- Construir etiquetas de trimestres, excluyendo Q1 2023 ---
+df_quarters <- expand.grid(year = 2021:2023, q = 1:4)
+df_quarters$pos <- df_quarters$year + (df_quarters$q - 1) / 4
+df_quarters <- df_quarters[order(df_quarters$pos), ]
+df_quarters <- df_quarters[!(df_quarters$year == 2023 & df_quarters$q == 1), ]
+breaks_all <- df_quarters$pos
+labels_all <- paste0(df_quarters$year, " Q", df_quarters$q)
+
+# --- Rango del zoom ---
+x_min <- 2021
+x_max <- 2022 + (4-1)/4  # hasta Q4 2022
+
+# --- Filtrar datos del zoom para que no incluyan Q1 2023 ---
+df_total_zoom <- df_total[df_total$Trimestre <= x_max, ]
+df_pred2_zoom <- df_pred2[df_pred2$Trimestre <= x_max, ]
+
+# --- Gráfico principal ---
+p_main <- ggplot() +
+  geom_line(data = df_total, aes(x = Trimestre, y = PIB),
+            color = "#4E2869", linewidth = 1) +
+  geom_line(data = df_pred2, aes(x = Trimestre, y = Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  geom_ribbon(data = df_pred2, aes(x = Trimestre, ymin = Lower, ymax = Upper),
+              fill = "#8BC53F", alpha = 0.2) +
+  coord_cartesian(xlim = c(2000, 2023)) +
+  labs(
+    title = "Predicción PIB Q3–Q4 2022 (SARIMA manual)",
+    y = "PIB", x = "Trimestre"
+  ) +
+  theme_minimal()
+
+# --- Gráfico zoom ---
+p_zoom <- ggplot() +
+  geom_line(data = df_total_zoom, aes(x = Trimestre, y = PIB),
+            color = "#4E2869", linewidth = 1) +
+  geom_line(data = df_pred2_zoom, aes(x = Trimestre, y = Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  geom_ribbon(data = df_pred2_zoom, aes(x = Trimestre, ymin = Lower, ymax = Upper),
+              fill = "#8BC53F", alpha = 0.2) +
+  coord_cartesian(xlim = c(x_min, x_max), expand = FALSE) +
+  scale_x_continuous(breaks = breaks_all[breaks_all <= x_max],
+                     labels = labels_all[breaks_all <= x_max],
+                     limits = c(x_min, x_max)) +
+  theme_minimal() +
+  theme(
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.background = element_rect(color = "#C01757", linewidth = 0.5)
+  )
+
+# --- Combinar ambos con la lupa ---
+final_plot <- ggdraw() +
+  draw_plot(p_main) +
+  draw_plot(p_zoom, x = 0.6, y = 0.15, width = 0.35, height = 0.35)
+
+final_plot
+
 
 # Guardar los resultados
 
@@ -525,3 +610,5 @@ print(predicciones_PIB)
 
 # Guardar como archivo RDS
 saveRDS(predicciones_PIB, file = "Datos/Resultados/Pred_PIB_Q3_Q4.rds")
+ggsave("Graficos/Graficos Modelado/GraficoPredPIB.pdf", final_plot)
+
