@@ -127,10 +127,6 @@ fit_arimaEst <- arima(train_IPC_est,
                       seasonal = list(order=c(1,0,0), period=12),     # D=0 porque ya está diferenciada estacionalmente
                       include.mean = FALSE)
 
-# ARIMA con estacionalidad permitida 
-fit_arima2 <- auto.arima(train_IPC, seasonal = FALSE, 
-                         lambda = lambda, stepwise = FALSE, approximation = FALSE,
-                         allowdrift = FALSE)
 
 # SARIMA "forzado" a considerar componente estacional si la hay
 fit_sarima <- auto.arima(train_IPC, seasonal = TRUE,
@@ -138,7 +134,6 @@ fit_sarima <- auto.arima(train_IPC, seasonal = TRUE,
 
 checkresiduals(fit_arima1)
 checkresiduals(fit_arimaEst)
-checkresiduals(fit_arima2)
 checkresiduals(fit_sarima)
 
 # Pronósticos en escala original (forecast revierte Box-Cox al llevar lambda dentro)
@@ -164,25 +159,21 @@ fc_arimaEst_lvl <- ts(
 )
 
 fc_arima1 <- forecast(fit_arima1, h = h)
-fc_arima2 <- forecast(fit_arima2, h = h)
 fc_sarima <- forecast(fit_sarima, h = h)
 
 fc_list <- list(
   `ARIMA1` = forecast(fit_arima1, h=h),
   `ARIMAEst` = structure(list(mean = fc_arimaEst_lvl), class = "forecast"),
-  `ARIMA2` = forecast(fit_arima2, h=h),
   `SARIMA` = forecast(fit_sarima, h=h)
 )
 
 # Comparación rápida contra test
 autoplot(fc_arima1) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA1 vs Test")
 autoplot(fc_arimaEst_lvl) + autolayer(test_IPC, series="Test") + ggtitle("ARIMAEst vs Test")
-autoplot(fc_arima2) + autolayer(test_IPC, series="Test") + ggtitle("ARIMA2 vs Test")
 autoplot(fc_sarima) + autolayer(test_IPC, series="Test") + ggtitle("SARIMA vs Test")
 
 accuracy(fc_arima1$mean, test_IPC)
 accuracy(fc_arimaEst_lvl, test_IPC)
-accuracy(fc_arima2$mean, test_IPC)
 accuracy(fc_sarima$mean, test_IPC)
 
 # ------ Metricas + LjungBox ------
@@ -196,7 +187,6 @@ safe_lb <- function(model, lag = 24, fitdf = NULL) {
 lb_map <- c(
   `ARIMA1` = safe_lb(fit_arima1, lag=24),
   `ARIMAEst` = safe_lb(fit_arimaEst, lag=24),
-  `ARIMA2` = safe_lb(fit_arima2, lag=24),
   `SARIMA` = safe_lb(fit_sarima, lag=24)
 )
 
@@ -224,7 +214,7 @@ cat("\nGanador provisional:", winner_name,
            " (no pasa Ljung-Box; elegido por RMSE)", ""), "\n")
 
 # Mantenemos el mapa de modelos por si lo quieres usar después
-fit_map <- list(`ARIMA1`=fit_arima1, `ARIMA2`=fit_arima2, `SARIMA`=fit_sarima)
+fit_map <- list(`ARIMA1`=fit_arima1, `SARIMA`=fit_sarima)
 WIN_FIT <- fit_map[[winner_name]]           
 WIN_FC  <- fc_list[[winner_name]]       
 
@@ -250,8 +240,8 @@ cat("\nGanador definitivo:", winner_name,
 # =========================================================
 # GANADOR PROVISIONAL ARIMA(1,1,3)(1,1,0)[12]
 # =========================================================
-ggtsdisplay(residuals(WIN_FC))
-checkresiduals(WIN_FC)
+ggtsdisplay(residuals(WIN_FIT))
+checkresiduals(WIN_FIT)
 
 
 # ===============      ARIMAX (exógenas)     ==============
@@ -419,7 +409,6 @@ checkresiduals(WIN_FIT)
 #TABLA COMPARACIONES TODOS LOS MODELOS TEST
 fc_arima_test  <- fc_list[["ARIMA1"]]
 fc_arimaEst_test  <- fc_list[["ARIMAEst"]]
-fc_arima2_test <- fc_list[["ARIMA2"]]
 fc_sarima_test <- fc_list[["SARIMA"]]
 
 idx <- as.Date(as.yearmon(time(test_IPC)))
@@ -431,138 +420,151 @@ pred_test_tbl <- data.frame(
   Observado = round(as.numeric(test_IPC), 3),
   ARIMA1    = round(as.numeric(fc_arima_test$mean)[seq_len(n)], 3),
   ARIMAEst  = round(as.numeric(fc_arimaEst_test$mean)[seq_len(n)], 3),
-  ARIMA2    = round(as.numeric(fc_arima2_test$mean)[seq_len(n)], 3),
   SARIMA    = round(as.numeric(fc_sarima_test$mean)[seq_len(n)], 3),
   ARIMAX    = round(as.numeric(fc_MS$mean)[seq_len(n)], 3),
   check.names = FALSE
 )
 print(pred_test_tbl, row.names = FALSE)
+# ===== Tabla comparativa en TEST (ME, RMSE, MAE, MPE, MAPE, ACF1, AIC) =====
+get_row <- function(nombre, fc_vals, model_obj, y_test){
+  err  <- as.numeric(y_test) - as.numeric(fc_vals)
+  data.frame(
+    Modelo = nombre,
+    ME   = mean(err, na.rm=TRUE),
+    RMSE = sqrt(mean(err^2, na.rm=TRUE)),
+    MAE  = mean(abs(err), na.rm=TRUE),
+    MPE  = mean(100 * err / as.numeric(y_test), na.rm=TRUE),
+    MAPE = mean(100 * abs(err / as.numeric(y_test)), na.rm=TRUE),
+    ACF1 = as.numeric(acf(err, lag.max=1, plot=FALSE)$acf[2]),
+    AIC  = suppressWarnings(AIC(model_obj)),
+    check.names = FALSE
+  )
+}
 
+h_test <- length(test_IPC)
+tabla_test <- do.call(rbind, list(
+  get_row("ARIMA1",            fc_arima1$mean[1:h_test],  fit_arima1,   test_IPC),
+  get_row("SARIMA",            fc_sarima$mean[1:h_test],  fit_sarima,   test_IPC),
+  get_row("ARIMA manual",      fc_arimaEst_lvl[1:h_test], fit_arimaEst, test_IPC),
+  get_row("ARIMAX MS",         fc_MS$mean[1:h_test],      ARIMAX_MS,    test_IPC),
+  get_row("ARIMAX MS+SMI",     fc_MSS$mean[1:h_test],     ARIMAX_MSS,   test_IPC),
+  get_row("ARIMAX MS+SMI+UR",  fc_MSSU$mean[1:h_test],    ARIMAX_MSSU,  test_IPC)
+))
+
+tabla_test <- tabla_test[order(tabla_test$RMSE), ]
+cat("\n# === Comparativa de modelos en TEST (ordenados por RMSE) ===\n")
+print(tabla_test, row.names = FALSE)
+saveRDS(tabla_test,"Datos/Resultados/Tabla_Antes_CV_IPC.rds")
 ################################################################################
 # 7. CROSS-VALIDATION (Rolling forecast) con los modelos de IPC (h=1)
 ################################################################################
-# 
 # # --- Parámetros de CV ---
-# h <- 1                                     # horizonte 1 mes
-# n <- length(IPC_sinO)                      # longitud total
-# train_size <- max(84, 2*frequency(IPC_sinO) + 24)  # ventana inicial razonable (>=7 años)
-# cat("Iniciando CV. Tamaño inicial del train:", train_size, "meses.\n")
+# h <- 1
+# n <- length(IPC_sinO)
+# train_size <- max(84, 2*frequency(IPC_sinO) + 24)
 # 
-# # Lambda fijo para todo el CV (coherente con tu pipeline)
-# lambda_cv <- BoxCox.lambda(train_IPC)
+# lambda_cv <- BoxCox.lambda(window(IPC_sinO, end = time(IPC_sinO)[train_size]))
 # 
-# # Vectores de predicción (h=1) para cada modelo
 # m <- n - train_size
-# pred_arima1_cv      <- rep(NA_real_, m)
-# pred_sarima_cv      <- rep(NA_real_, m)
-# pred_arimaEst_cv    <- rep(NA_real_, m)
-# pred_arimax_MSSU_cv <- rep(NA_real_, m)
+# pred_arima1_cv       <- rep(NA_real_, m)
+# pred_sarima_cv       <- rep(NA_real_, m)
+# pred_arimaEst_cv     <- rep(NA_real_, m)
+# pred_arimax_MS_cv    <- rep(NA_real_, m)
+# pred_arimax_MSS_cv   <- rep(NA_real_, m)
+# pred_arimax_MSSU_cv  <- rep(NA_real_, m)
 # 
-# # Utilidades
 # fix_na <- function(v) if (anyNA(v)) forecast::na.interp(v) else v
 # 
-# # Barra de progreso
 # pb <- txtProgressBar(min = 0, max = m, style = 3, width = 50, char = "=")
 # k <- 0
-# 
-# cat("Iniciando Cross-Validation (Rolling Forecast)...\n")
 # for (i in train_size:(n-1)) {
-#   # Índice donde guardamos la predicción de esta ventana
 #   idx_pred <- i - train_size + 1
 #   
-#   # ---------- Ventana de entrenamiento (target) ----------
-#   train_IPC_cv <- window(IPC_sinO, end = time(IPC_sinO)[i])
+#   # ----- Ventanas target y exógenas -----
+#   y_tr   <- window(IPC_sinO, end = time(IPC_sinO)[i])
+#   ms_tr  <- window(MS_sinO,  end = time(MS_sinO)[i])
+#   smi_tr <- window(SMI_sinO, end = time(SMI_sinO)[i])
+#   ur_tr  <- window(UR_sinO,  end = time(UR_sinO)[i])
 #   
-#   # ---------- Ventanas exógenas (alineadas) ----------
-#   train_MS_cv  <- window(MS_sinO,  end = time(MS_sinO)[i])
-#   train_SMI_cv <- window(SMI_sinO, end = time(SMI_sinO)[i])
-#   train_UR_cv  <- window(UR_sinO,  end = time(UR_sinO)[i])
+#   ms_nx  <- if (i+1 <= length(MS_sinO))  MS_sinO[i+1]  else NA_real_
+#   smi_nx <- if (i+1 <= length(SMI_sinO)) SMI_sinO[i+1] else NA_real_
+#   ur_nx  <- if (i+1 <= length(UR_sinO))  UR_sinO[i+1]  else NA_real_
 #   
-#   # Exógenas para el siguiente paso (t+1)
-#   if (i+1 <= length(MS_sinO)) {
-#     next_MS  <- MS_sinO[i+1]
-#     next_SMI <- SMI_sinO[i+1]
-#     next_UR  <- UR_sinO[i+1]
-#   } else {
-#     next_MS <- next_SMI <- next_UR <- NA_real_
+#   # Limpieza básica
+#   y_tr   <- fix_na(y_tr)
+#   ms_tr  <- fix_na(ms_tr);  smi_tr <- fix_na(smi_tr);  ur_tr <- fix_na(ur_tr)
+#   
+#   # ---------- ARIMA1 ----------
+#   fit_a1 <- try(auto.arima(y_tr, seasonal = FALSE, lambda = lambda_cv,
+#                            stepwise = TRUE, approximation = TRUE), silent = TRUE)
+#   if (!inherits(fit_a1, "try-error"))
+#     pred_arima1_cv[idx_pred] <- as.numeric(forecast(fit_a1, h = h)$mean)
+#   
+#   # ---------- SARIMA ----------
+#   fit_s  <- try(auto.arima(y_tr, seasonal = TRUE, lambda = lambda_cv,
+#                            stepwise = TRUE, approximation = TRUE), silent = TRUE)
+#   if (!inherits(fit_s, "try-error"))
+#     pred_sarima_cv[idx_pred] <- as.numeric(forecast(fit_s, h = h)$mean)
+#   
+#   # ---------- ARIMA manual (log, ∇, ∇12) ----------
+#   xlog <- log(y_tr)
+#   ydf  <- diff(diff(xlog, lag = 12), differences = 1)
+#   fit_m <- try(Arima(ydf, order = c(2,0,2),
+#                      seasonal = list(order = c(1,0,0), period = 12),
+#                      include.mean = FALSE), silent = TRUE)
+#   if (!inherits(fit_m, "try-error")) {
+#     fc_m <- forecast(fit_m, h = h)$mean
+#     y_seas <- diff(xlog, lag = 12)
+#     y_d1   <- diffinv(as.numeric(fc_m), xi = tail(y_seas, 1))[-1]
+#     y_lvl  <- diffinv(y_d1, lag = 12, xi = tail(xlog, 12))[-(1:12)]
+#     pred_arimaEst_cv[idx_pred] <- exp(y_lvl)[1]
 #   }
 #   
-#   # ---------- Modelo 1: ARIMA1 (auto, no estacional, lambda) ----------
-#   fit_arima1_cv <- try(
-#     auto.arima(train_IPC_cv, seasonal = FALSE, lambda = lambda_cv,
-#                stepwise = TRUE, approximation = TRUE),
-#     silent = TRUE
-#   )
-#   if (!inherits(fit_arima1_cv, "try-error")) {
-#     pred_arima1_cv[idx_pred] <- as.numeric(forecast(fit_arima1_cv, h = h)$mean)
+#   # ---------- ARIMAX (MS) ----------
+#   mu_MS  <- mean(as.numeric(ms_tr), na.rm = TRUE)
+#   sd_MS  <- sd(as.numeric(ms_tr), na.rm = TRUE)
+#   X_MS   <- scale(matrix(as.numeric(ms_tr), ncol = 1), center = mu_MS, scale = sd_MS)
+#   Xn_MS  <- scale(matrix(ms_nx, nrow = 1), center = mu_MS, scale = sd_MS)
+#   
+#   fit_x_MS <- try(auto.arima(y_tr, xreg = X_MS, lambda = lambda_cv,
+#                              seasonal = TRUE, stepwise = TRUE, approximation = TRUE),
+#                   silent = TRUE)
+#   if (!inherits(fit_x_MS, "try-error") && is.finite(Xn_MS)) {
+#     pred_arimax_MS_cv[idx_pred] <- as.numeric(forecast(fit_x_MS, xreg = Xn_MS, h = h, biasadj = TRUE)$mean)
 #   }
 #   
-#   # ---------- Modelo 2: SARIMA (auto, estacional, lambda) ----------
-#   fit_sarima_cv <- try(
-#     auto.arima(train_IPC_cv, seasonal = TRUE, lambda = lambda_cv,
-#                stepwise = TRUE, approximation = TRUE),
-#     silent = TRUE
-#   )
-#   if (!inherits(fit_sarima_cv, "try-error")) {
-#     pred_sarima_cv[idx_pred] <- as.numeric(forecast(fit_sarima_cv, h = h)$mean)
+#   # ---------- ARIMAX (MS+SMI) ----------
+#   Xtr_MSS <- cbind(MS = as.numeric(ms_tr), SMI = as.numeric(smi_tr))
+#   mu_MSS  <- colMeans(Xtr_MSS, na.rm = TRUE)
+#   sd_MSS  <- apply(Xtr_MSS, 2, sd, na.rm = TRUE)
+#   X_MSS   <- scale(Xtr_MSS, center = mu_MSS, scale = sd_MSS)
+#   Xn_MSS  <- scale(matrix(c(ms_nx, smi_nx), nrow = 1), center = mu_MSS, scale = sd_MSS)
+#   
+#   fit_x_MSS <- try(auto.arima(y_tr, xreg = X_MSS, lambda = lambda_cv,
+#                               seasonal = TRUE, stepwise = TRUE, approximation = TRUE),
+#                    silent = TRUE)
+#   if (!inherits(fit_x_MSS, "try-error") && all(is.finite(Xn_MSS))) {
+#     pred_arimax_MSS_cv[idx_pred] <- as.numeric(forecast(fit_x_MSS, xreg = Xn_MSS, h = h, biasadj = TRUE)$mean)
 #   }
 #   
-#   # ---------- Modelo 3: ARIMAEst (manual en LOG, con inversión) ----------
-#   # Transformación segura en log
-#   x_log_cv <- log(fix_na(train_IPC_cv))
-#   # Diferencias: ∇ ∇_12 log y_t
-#   y_diff_cv <- diff(diff(x_log_cv, lag = 12), differences = 1)
+#   # ---------- ARIMAX (MS+SMI+UR) ----------
+#   Xtr_MSSU <- cbind(MS = as.numeric(ms_tr), SMI = as.numeric(smi_tr), UR = as.numeric(ur_tr))
+#   mu_MSSU  <- colMeans(Xtr_MSSU, na.rm = TRUE)
+#   sd_MSSU  <- apply(Xtr_MSSU, 2, sd, na.rm = TRUE)
+#   X_MSSU   <- scale(Xtr_MSSU, center = mu_MSSU, scale = sd_MSSU)
+#   Xn_MSSU  <- scale(matrix(c(ms_nx, smi_nx, ur_nx), nrow = 1), center = mu_MSSU, scale = sd_MSSU)
 #   
-#   fit_manu_cv <- try(
-#     forecast::Arima(y = y_diff_cv,
-#                     order = c(2,0,2),
-#                     seasonal = list(order = c(1,0,0), period = 12),
-#                     include.mean = FALSE),
-#     silent = TRUE
-#   )
-#   if (!inherits(fit_manu_cv, "try-error")) {
-#     # Pronóstico en escala diferenciada
-#     fc_manu <- forecast(fit_manu_cv, h = h)$mean  # vector de longitud h
-#     # Inversión: primero no estacional
-#     y_seas_diff_cv <- diff(x_log_cv, lag = 12)
-#     y_d1_cv <- diffinv(as.numeric(fc_manu), xi = tail(y_seas_diff_cv, 1))[-1]
-#     # Luego estacional (lag=12)
-#     y_lvl_log_cv <- diffinv(y_d1_cv, lag = 12, xi = tail(x_log_cv, 12))[-(1:12)]
-#     # Volver a escala original
-#     pred_arimaEst_cv[idx_pred] <- exp(y_lvl_log_cv)[1]
+#   fit_x_MSSU <- try(auto.arima(y_tr, xreg = X_MSSU, lambda = lambda_cv,
+#                                seasonal = TRUE, stepwise = TRUE, approximation = TRUE),
+#                     silent = TRUE)
+#   if (!inherits(fit_x_MSSU, "try-error") && all(is.finite(Xn_MSSU))) {
+#     pred_arimax_MSSU_cv[idx_pred] <- as.numeric(forecast(fit_x_MSSU, xreg = Xn_MSSU, h = h, biasadj = TRUE)$mean)
 #   }
 #   
-#   # ---------- Modelo 4: ARIMAX (MS+SMI+UR), estandarizado por ventana ----------
-#   # Estandarizar con parámetros de la ventana
-#   Xtr_list <- list(MS = as.numeric(train_MS_cv),
-#                    SMI = as.numeric(train_SMI_cv),
-#                    UR  = as.numeric(train_UR_cv))
-#   mu_cv  <- sapply(Xtr_list, mean, na.rm = TRUE)
-#   sdv_cv <- sapply(Xtr_list, sd,   na.rm = TRUE)
-#   Xtr_cv <- scale(do.call(cbind, Xtr_list), center = mu_cv, scale = sdv_cv)
-#   
-#   Xnext_mat <- matrix(c(next_MS, next_SMI, next_UR), nrow = 1)
-#   Xte_cv <- scale(Xnext_mat, center = mu_cv, scale = sdv_cv)
-#   
-#   fit_arimax_cv <- try(
-#     auto.arima(train_IPC_cv,
-#                xreg = Xtr_cv,
-#                lambda = lambda_cv,
-#                seasonal = TRUE,
-#                stepwise = TRUE, approximation = TRUE),
-#     silent = TRUE
-#   )
-#   if (!inherits(fit_arimax_cv, "try-error") && !any(is.na(Xte_cv))) {
-#     pred_arimax_MSSU_cv[idx_pred] <- as.numeric(
-#       forecast(fit_arimax_cv, xreg = Xte_cv, h = h, biasadj = TRUE)$mean
-#     )
-#   }
-#   
-#   # Progreso
-#   k <- k + 1
-#   setTxtProgressBar(pb, k)
+#   k <- k + 1; setTxtProgressBar(pb, k)
 # }
 # close(pb)
+# 
 # cat("Cross-Validation finalizado.\n")
 # 
 # # ------------------ Métricas CV ------------------
@@ -604,6 +606,69 @@ print(pred_test_tbl, row.names = FALSE)
 # saveRDS(tab_cv, file = "Datos/Resultados/CV_metrics_IPC.rds")
 tab_cv <- readRDS("Datos/Resultados/CV_metrics_IPC.rds")
 print(tab_cv, row.names = FALSE)
+# 
+# # Observado a partir del primer punto pronosticado
+# actual_cv <- window(IPC_sinO, start = time(IPC_sinO)[train_size + 1])
+# len <- length(actual_cv)
+# 
+# # Alinear longitudes
+# pred_arima1_cv      <- tail(pred_arima1_cv,      len)
+# pred_sarima_cv      <- tail(pred_sarima_cv,      len)
+# pred_arimaEst_cv    <- tail(pred_arimaEst_cv,    len)
+# pred_arimax_MS_cv   <- tail(pred_arimax_MS_cv,   len)
+# pred_arimax_MSS_cv  <- tail(pred_arimax_MSS_cv,  len)
+# pred_arimax_MSSU_cv <- tail(pred_arimax_MSSU_cv, len)
+# 
+# # Errores
+# e1   <- actual_cv - pred_arima1_cv
+# e2   <- actual_cv - pred_sarima_cv
+# e3   <- actual_cv - pred_arimaEst_cv
+# e_MS <- actual_cv - pred_arimax_MS_cv
+# e_MSS<- actual_cv - pred_arimax_MSS_cv
+# e4   <- actual_cv - pred_arimax_MSSU_cv  # (mantengo tu nombre original)
+# 
+# # Funciones auxiliares
+# cv_row <- function(nombre, err, actual, aic_val){
+#   idx <- which(is.finite(err) & is.finite(actual))
+#   e <- err[idx]; a <- as.numeric(actual)[idx]
+#   acf1 <- if (length(na.omit(e)) >= 2)
+#     as.numeric(acf(na.omit(e), lag.max = 1, plot = FALSE)$acf[2]) else NA_real_
+#   data.frame(
+#     Modelo = nombre,
+#     ME   = mean(e, na.rm = TRUE),
+#     RMSE = sqrt(mean(e^2, na.rm = TRUE)),
+#     MAE  = mean(abs(e), na.rm = TRUE),
+#     MPE  = mean(100 * e / a, na.rm = TRUE),
+#     MAPE = mean(100 * abs(e / a), na.rm = TRUE),
+#     ACF1 = acf1,
+#     AIC  = aic_val,
+#     check.names = FALSE
+#   )
+# }
+# safe_AIC <- function(m) tryCatch(AIC(m), error = function(...) NA_real_)
+# 
+# AIC_map <- c(
+#   "ARIMA1"            = safe_AIC(fit_arima1),
+#   "SARIMA"            = safe_AIC(fit_sarima),
+#   "ARIMA manual"      = safe_AIC(fit_arimaEst),
+#   "ARIMAX MS"         = safe_AIC(ARIMAX_MS),
+#   "ARIMAX MS+SMI"     = safe_AIC(ARIMAX_MSS),
+#   "ARIMAX MS+SMI+UR"  = safe_AIC(ARIMAX_MSSU)
+# )
+# 
+# tabla_cv <- do.call(rbind, list(
+#   cv_row("ARIMAX MS",         e_MS,     actual_cv, AIC_map["ARIMAX MS"]),
+#   cv_row("ARIMAX MS+SMI",     e_MSS,    actual_cv, AIC_map["ARIMAX MS+SMI"]),
+#   cv_row("ARIMAX MS+SMI+UR",  e4,       actual_cv, AIC_map["ARIMAX MS+SMI+UR"]),
+#   cv_row("SARIMA",            e2,       actual_cv, AIC_map["SARIMA"]),
+#   cv_row("ARIMA manual",      e3,       actual_cv, AIC_map["ARIMA manual"]),
+#   cv_row("ARIMA1",            e1,       actual_cv, AIC_map["ARIMA1"])
+# ))
+# tabla_cv <- tabla_cv[order(tabla_cv$RMSE), ]
+# print(tabla_cv, row.names = FALSE)
+# saveRDS(tabla_cv,"Datos/Resultados/Tabla_Despues_CV_IPC.rds")
+tabla_cv <- readRDS("Datos/Resultados/Tabla_Despues_CV_IPC.rds")
+print(tabla_cv, row.names = FALSE)
 
 # ================== Pronóstico futuro con ARIMA MANUAL + SARIMA ==================
 # 1.1) Preparar datos (usando la serie COMPLETA)
@@ -704,7 +769,6 @@ pal_original <- c(
   "Observado"       = "#2B303A",
   "Forecast SARIMA" = "#1B998B",
   "ARIMA1"          = "#E84A5F",
-  "ARIMA2"          = "#F6AE2D",
   "SARIMA"          = "#1B998B",
   "ARIMAX"          = "#2D7DD2"
 )
@@ -772,7 +836,6 @@ ggsave("Graficos/01_serie_completa_mas_forecast.png", p_full, width = 10, height
 # ================================================
 pal_comp <- c(
   ARIMA1        = "#E15759", # Rojo
-  ARIMA2        = "#F28E2B", # Naranja
   SARIMA        = "#59A14F", # Verde
   ARIMAX        = "#4E79A7", # Azul
   ARIMAEst      = "#7B2CBF", # Morado
@@ -791,7 +854,6 @@ h_test <- length(test_IPC)
 df_pred <- data.frame(
   fecha        = to_date(test_IPC),
   ARIMA1       = as.numeric(fc_arima1$mean[1:h_test]),
-  ARIMA2       = as.numeric(fc_arima2$mean[1:h_test]),
   SARIMA       = as.numeric(fc_sarima$mean[1:h_test]),
   ARIMAEst     = as.numeric(fc_arimaEst_test$mean[1:h_test])
 )
@@ -799,9 +861,9 @@ df_pred <- data.frame(
 # Añadir ARIMAX solo si existe
 if (exists("fc_MS")) {
   df_pred$ARIMAX <- as.numeric(fc_MS$mean[1:h_test])
-  model_levels <- c("ARIMA1", "ARIMA2", "SARIMA", "ARIMAEst", "ARIMAX")
+  model_levels <- c("ARIMA1", "SARIMA", "ARIMAEst", "ARIMAX")
 } else {
-  model_levels <- c("ARIMA1", "ARIMA2", "SARIMA", "ARIMAEst")
+  model_levels <- c("ARIMA1", "SARIMA", "ARIMAEst")
 }
 
 df_pred_long <- df_pred %>%
