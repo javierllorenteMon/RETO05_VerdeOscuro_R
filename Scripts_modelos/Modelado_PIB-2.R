@@ -610,5 +610,5 @@ print(predicciones_PIB)
 
 # Guardar como archivo RDS
 saveRDS(predicciones_PIB, file = "Datos/Resultados/Pred_PIB_Q3_Q4.rds")
-ggsave("Graficos/Graficos Modelado/GraficoPredPIB.pdf", final_plot)
+ggsave("Graficos/Graficos Modelado/GraficoPredPIB.png", final_plot, width = 10, height = 6, dpi = 300, bg = "white")
 

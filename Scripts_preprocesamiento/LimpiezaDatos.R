@@ -279,9 +279,9 @@ saveRDS(SMI_sinO_M, "Datos/transformados/SMI_sinO_M.rds")
 
 
 # Guardar graficos
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", grafico_outliers_PIB)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf", grafico_outliers_IPC)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf",  grafico_outliers_MS)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf",  grafico_outliers_UR)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.pdf", grafico_outliers_SMI)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.png", grafico_outliers_PIB, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.png", grafico_outliers_IPC, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.png",  grafico_outliers_MS, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.png",  grafico_outliers_UR, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.png", grafico_outliers_SMI, width = 10, height = 6, dpi = 300, bg = "white")
 
