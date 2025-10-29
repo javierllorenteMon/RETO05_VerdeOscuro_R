@@ -103,7 +103,7 @@ productividad <- cargar_archivo_istat('productividad_laboral_trimestral_italia.c
 revenue_exp <- cargar_archivo_istat('revenue_vs_expenditure.csv')
 comercio_exterior <- cargar_archivo_istat('comercio_exterior_unificado.csv')
 tasas_empleo <- cargar_archivo_istat('definitivo_tasas_empleo_desempleo.csv')
-
+View(revenue_exp)
 # CARGAR LOS CUATRO ARCHIVOS NUEVOS
 confianza_trimestral <- cargar_archivo_istat('confianza_consumidor_trimestral_italia_1999_2022.csv')
 confianza_mensual <- cargar_archivo_istat('confianza_consumidor_mensual_italia_1999_2022.csv')
@@ -118,6 +118,9 @@ pib_real_limpio <- cargar_archivo_istat('PIB_real_limpio.csv')
 
 # CARGAR EL ARCHIVO DE CONSUMO PRIVADO
 consumo_privado <- cargar_archivo_istat('consumo_privado.csv')
+
+# CARGAR EL ARCHIVO DE INVERSIÓN PRIVADA
+inversion_privada <- cargar_archivo_istat('inversion_privada_limpio.csv')
 
 # 7. Preparar datos ISTAT
 cat("\n=== PREPARANDO DATOS ISTAT ===\n")
@@ -409,6 +412,64 @@ if(!is.null(consumo_privado)) {
   cat("✗ No se encontró consumo_privado.csv - variable no se incluirá\n")
 }
 
+# PREPARAR EL ARCHIVO DE INVERSIÓN PRIVADA
+if(!is.null(inversion_privada)) {
+  cat("✓ Preparando datos de inversión privada\n")
+  
+  # Verificar la estructura del archivo
+  cat("  Estructura del archivo inversión privada:\n")
+  cat("  - Nombres de columnas:", names(inversion_privada), "\n")
+  cat("  - Dimensiones:", dim(inversion_privada), "\n")
+  cat("  - Primera fila:\n")
+  print(head(inversion_privada, 2))
+  
+  # Limpiar y preparar datos de inversión privada
+  inversion_privada_clean <- inversion_privada %>%
+    # Renombrar columnas para consistencia
+    rename(
+      Valor_inversion_privada = valor,
+      Agregado = agregado
+    ) %>%
+    # Filtrar solo Gross fixed capital formation (Formación Bruta de Capital Fijo)
+    filter(Agregado == "Gross fixed capital formation") %>%
+    # Crear secuencia de trimestres (asumiendo que los datos están en orden cronológico)
+    mutate(
+      # Crear índice secuencial para asignar trimestres
+      indice = row_number(),
+      # Asignar años y trimestres basado en el índice
+      Year = 1995 + floor((indice - 1) / 4),
+      Quarter = case_when(
+        indice %% 4 == 1 ~ "Q1",
+        indice %% 4 == 2 ~ "Q2",
+        indice %% 4 == 3 ~ "Q3",
+        indice %% 4 == 0 ~ "Q4"
+      )
+    ) %>%
+    # Verificar que tenemos datos válidos
+    filter(!is.na(Valor_inversion_privada) & !is.na(Year) & !is.na(Quarter)) %>%
+    # Crear identificador de período
+    mutate(Periodo = paste(Year, Quarter)) %>%
+    # Seleccionar solo las columnas necesarias
+    select(Periodo, Valor_inversion_privada, Year, Quarter)
+  
+  cat("  - Períodos disponibles después de limpieza:", nrow(inversion_privada_clean), "\n")
+  cat("  - Rango:", min(inversion_privada_clean$Periodo), "a", max(inversion_privada_clean$Periodo), "\n")
+  cat("  - Primeros registros:\n")
+  print(head(inversion_privada_clean, 5))
+  cat("  - Últimos registros:\n")
+  print(tail(inversion_privada_clean, 5))
+  
+  # Unir al dataframe ISTAT completo
+  istat_completo <- istat_completo %>% 
+    left_join(inversion_privada_clean %>% select(Periodo, Valor_inversion_privada), by = "Periodo")
+  
+  # Verificar que se unió correctamente
+  cat("  - Verificación de unión - períodos con inversión privada:", sum(!is.na(istat_completo$Valor_inversion_privada)), "\n")
+  
+} else {
+  cat("✗ No se encontró inversion_privada_limpio.csv - variable no se incluirá\n")
+}
+
 # 8. Unificar todos los datos
 cat("\n=== UNIFICANDO TODOS LOS DATOS ===\n")
 
@@ -458,6 +519,20 @@ if("Consumo_Privado" %in% names(italia_trimestral)) {
   cat("✗ Consumo_Privado NO está en italia_trimestral\n")
 }
 
+# VERIFICACIÓN ESPECIAL PARA INVERSIÓN PRIVADA
+cat("\n=== VERIFICACIÓN INVERSIÓN PRIVADA DESPUÉS DE UNIÓN ===\n")
+if("Valor_inversion_privada" %in% names(italia_trimestral)) {
+  cat("✓ Valor_inversion_privada está en italia_trimestral\n")
+  inversion_verif <- italia_trimestral %>% 
+    select(Periodo, Valor_inversion_privada) %>% 
+    filter(!is.na(Valor_inversion_privada))
+  cat("  - Períodos con datos:", nrow(inversion_verif), "\n")
+  cat("  - Rango:", min(inversion_verif$Periodo), "a", max(inversion_verif$Periodo), "\n")
+  print(head(inversion_verif, 5))
+} else {
+  cat("✗ Valor_inversion_privada NO está en italia_trimestral\n")
+}
+
 # 9. Limpiar y enriquecer dataframe final CON PORCENTAJES TRIMESTRALES
 cat("\n=== CREANDO DATAFRAME FINAL CON PORCENTAJES TRIMESTRALES ===\n")
 
@@ -485,6 +560,13 @@ italia_trimestral <- italia_trimestral %>%
     # Porcentaje de cambio del CONSUMO PRIVADO trimestral - NUEVO
     Consumo_Privado_pct_cambio = if('Consumo_Privado' %in% names(.)) {
       (Consumo_Privado / lag(Consumo_Privado) - 1) * 100
+    } else {
+      NA_real_
+    },
+    
+    # Porcentaje de cambio de la INVERSIÓN PRIVADA trimestral - NUEVO
+    Inversion_Privada_pct_cambio = if('Valor_inversion_privada' %in% names(.)) {
+      (Valor_inversion_privada / lag(Valor_inversion_privada) - 1) * 100
     } else {
       NA_real_
     },
@@ -537,6 +619,8 @@ italia_trimestral <- italia_trimestral %>%
     matches("PIB_real_limpio"),
     # CONSUMO PRIVADO - NUEVO
     matches("Consumo_Privado"),
+    # INVERSIÓN PRIVADA - NUEVO
+    matches("inversion_privada"),
     # Porcentajes de cambio TRIMESTRALES (NUEVAS VARIABLES)
     matches("_pct_cambio"),
     # Empleo
@@ -649,6 +733,21 @@ if("Consumo_Privado" %in% names(italia_trimestral)) {
   cat("✗ ERROR: Consumo_Privado no se cargó correctamente\n")
 }
 
+# VERIFICACIÓN FINAL DE LA INVERSIÓN PRIVADA
+cat("\n=== VERIFICACIÓN FINAL: INVERSIÓN PRIVADA ===\n")
+if("Valor_inversion_privada" %in% names(italia_trimestral)) {
+  inversion_final <- italia_trimestral %>% 
+    select(Periodo, Valor_inversion_privada, Inversion_Privada_pct_cambio) %>% 
+    filter(!is.na(Valor_inversion_privada))
+  cat("✓ Inversión privada cargada correctamente\n")
+  cat("  - Total de períodos con datos:", nrow(inversion_final), "\n")
+  cat("  - Rango temporal:", min(inversion_final$Periodo), "a", max(inversion_final$Periodo), "\n")
+  cat("  - Muestra de datos:\n")
+  print(head(inversion_final, 10))
+} else {
+  cat("✗ ERROR: Valor_inversion_privada no se cargó correctamente\n")
+}
+
 # 10. ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES
 cat("\n=== ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES TRIMESTRALES ===\n")
 
@@ -739,11 +838,11 @@ crear_matriz_correlacion_focalizada <- function(df, titulo) {
   cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
   
   # Filtrar solo las correlaciones con GDP y CPI
-  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado")
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado", "Valor_inversion_privada")
   available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
   
   if(length(available_targets) == 0) {
-    cat("No se encontraron las variables GDP, CPI o Consumo_Privado en", titulo, "\n")
+    cat("No se encontraron las variables GDP, CPI, Consumo_Privado o Inversión en", titulo, "\n")
     return(NULL)
   }
   
@@ -777,7 +876,7 @@ crear_matriz_correlacion_focalizada <- function(df, titulo) {
            addCoef.col = "black",
            number.cex = 0.7,
            mar = c(0, 0, 2, 0),
-           title = paste(titulo, "\n(Correlaciones con GDP, CPI y Consumo)"),
+           title = paste(titulo, "\n(Correlaciones con GDP, CPI, Consumo e Inversión)"),
            is.corr = TRUE,
            cl.lim = c(-1, 1))
 }
@@ -828,7 +927,7 @@ crear_tabla_correlaciones_gdp_cpi <- function(df) {
   
   cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
   
-  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado")
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado", "Valor_inversion_privada")
   available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
   
   if(length(available_targets) == 0) {
@@ -858,8 +957,8 @@ crear_tabla_correlaciones_gdp_cpi <- function(df) {
   return(correlaciones)
 }
 
-# Matriz de correlación FOCALIZADA para el dataframe completo (solo GDP, CPI y Consumo)
-cat("=== MATRIZ DE CORRELACIÓN - DATAFRAME COMPLETO (FOCALIZADA EN GDP, CPI Y CONSUMO) ===\n")
+# Matriz de correlación FOCALIZADA para el dataframe completo (solo GDP, CPI, Consumo e Inversión)
+cat("=== MATRIZ DE CORRELACIÓN - DATAFRAME COMPLETO (FOCALIZADA EN GDP, CPI, CONSUMO E INVERSIÓN) ===\n")
 if(ncol(italia_trimestral %>% select(where(is.numeric))) >= 2) {
   crear_matriz_correlacion_focalizada(italia_trimestral, "Matriz de Correlación - Italia Trimestral")
 } else {
@@ -883,15 +982,15 @@ if(ncol(italia_absolutos %>% select(where(is.numeric))) >= 2) {
 }
 
 # Crear y mostrar tabla resumen de correlaciones
-cat("\n=== TABLA RESUMEN DE CORRELACIONES CON GDP, CPI Y CONSUMO ===\n")
+cat("\n=== TABLA RESUMEN DE CORRELACIONES CON GDP, CPI, CONSUMO E INVERSIÓN ===\n")
 tabla_correlaciones <- crear_tabla_correlaciones_gdp_cpi(italia_trimestral)
 if(!is.null(tabla_correlaciones)) {
   print(tabla_correlaciones)
   
   # Guardar tabla resumen (opcional)
-  # write.csv(tabla_correlaciones, "Datos/correlaciones_gdp_cpi_consumo_italia.csv", 
+  # write.csv(tabla_correlaciones, "Datos/correlaciones_gdp_cpi_consumo_inversion_italia.csv", 
   #           row.names = FALSE, fileEncoding = "UTF-8")
-  cat("# Tabla de correlaciones guardada: Datos/correlaciones_gdp_cpi_consumo_italia.csv\n")
+  cat("# Tabla de correlaciones guardada: Datos/correlaciones_gdp_cpi_consumo_inversion_italia.csv\n")
 }
 
 # 13. ANÁLISIS ESTADÍSTICO COMPLETO DE PORCENTAJES
@@ -940,17 +1039,19 @@ resumen_anual <- italia_trimestral %>%
     PIB_promedio = mean(GDP.billion.currency.units, na.rm = TRUE),
     IPC_promedio = mean(Consumer.Price.Index..CPI., na.rm = TRUE),
     Consumo_promedio = mean(Consumo_Privado, na.rm = TRUE),
+    Inversion_promedio = mean(Valor_inversion_privada, na.rm = TRUE),
     PIB_pct_promedio = mean(PIB_pct_cambio, na.rm = TRUE),
     IPC_pct_promedio = mean(IPC_pct_cambio, na.rm = TRUE),
     Consumo_pct_promedio = mean(Consumo_Privado_pct_cambio, na.rm = TRUE),
+    Inversion_pct_promedio = mean(Inversion_Privada_pct_cambio, na.rm = TRUE),
     Confianza_promedio = mean(Indice_confianza_compuesto, na.rm = TRUE),
     Precios_vivienda_promedio = mean(Indice_precios_vivienda, na.rm = TRUE),
     .groups = 'drop'
   )
 print(resumen_anual)
 
-# 15. GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN Y CONSUMO DE italia_trimestral CON PLOTLY Y PALETA PANTONE
-cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN Y CONSUMO (PLOTLY + PANTONE) ===\n")
+# 15. GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN, CONSUMO E INVERSIÓN CON PLOTLY Y PALETA PANTONE
+cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN, CONSUMO E INVERSIÓN (PLOTLY + PANTONE) ===\n")
 
 # Definir paleta de colores Pantone
 PANTONE_220_C <- "#A50050"    # Rojo magenta
@@ -958,6 +1059,7 @@ PANTONE_376_C <- "#84BD00"    # Verde brillante
 PANTONE_262_C <- "#51284F"    # Púrpura oscuro
 PANTONE_9043_C <- "#EAE7E0"   # Beige claro (para fondos)
 PANTONE_293_C <- "#0055A4"    # Azul (para consumo)
+PANTONE_268_C <- "#8A2BE2"    # Violeta (para inversión)
 
 # Preparar datos para gráficos
 italia_plot_data <- italia_trimestral %>%
@@ -1214,19 +1316,86 @@ if("Consumo_Privado" %in% names(italia_plot_data)) {
   cat("✗ Variable Consumo_Privado no encontrada\n")
 }
 
-# 4. GRÁFICO COMPARATIVO GDP vs CPI vs CONSUMO (mismo estilo que individuales)
-cat("\n=== GRÁFICO 4: COMPARACIÓN GDP vs CPI vs CONSUMO ===\n")
+# 4. GRÁFICO DE LA INVERSIÓN PRIVADA CON PLOTLY - NUEVO
+cat("\n=== GRÁFICO 4: INVERSIÓN PRIVADA CON PORCENTAJES EN HOVER ===\n")
+
+if("Valor_inversion_privada" %in% names(italia_plot_data)) {
+  
+  # Filtrar datos con inversión privada
+  inversion_plot_data <- italia_plot_data %>% filter(!is.na(Valor_inversion_privada))
+  
+  # Crear texto para hover
+  hover_text_inversion <- paste(
+    "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+    "<b>Inversión Privada:</b> %{y:.0f} millones €<br>",
+    if("Inversion_Privada_pct_cambio" %in% names(italia_plot_data)) {
+      "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>"
+    } else {""},
+    "<extra></extra>"
+  )
+  
+  # Crear gráfico Plotly para inversión privada
+  inversion_plotly <- plot_ly(inversion_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~Valor_inversion_privada, 
+              type = 'scatter', 
+              mode = 'lines+markers',
+              line = list(color = PANTONE_268_C, width = 3),  # Violeta para inversión
+              marker = list(color = PANTONE_268_C, size = 6, opacity = 0.8),
+              name = 'Inversión Privada',
+              customdata = if("Inversion_Privada_pct_cambio" %in% names(italia_plot_data)) ~Inversion_Privada_pct_cambio else NULL,
+              hovertemplate = hover_text_inversion) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución de la Inversión Privada - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_268_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_268_C),
+        tickfont = list(color = PANTONE_268_C)
+      ),
+      yaxis = list(
+        title = "Inversión Privada (Millones de Euros)",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_268_C),
+        tickfont = list(color = PANTONE_268_C)
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_268_C, size = 12),
+        bordercolor = PANTONE_268_C
+      ),
+      showlegend = FALSE
+    )
+  
+  print(inversion_plotly)
+  cat("✓ Gráfico Plotly de la Inversión Privada creado y mostrado\n")
+  
+} else {
+  cat("✗ Variable Valor_inversion_privada no encontrada\n")
+}
+
+# 5. GRÁFICO COMPARATIVO GDP vs CPI vs CONSUMO vs INVERSIÓN (mismo estilo que individuales)
+cat("\n=== GRÁFICO 5: COMPARACIÓN GDP vs CPI vs CONSUMO vs INVERSIÓN ===\n")
 
 if("GDP.billion.currency.units" %in% names(italia_plot_data) & 
    "Consumer.Price.Index..CPI." %in% names(italia_plot_data) &
-   "Consumo_Privado" %in% names(italia_plot_data)) {
+   "Consumo_Privado" %in% names(italia_plot_data) &
+   "Valor_inversion_privada" %in% names(italia_plot_data)) {
   
   # Normalizar las variables para comparación en la misma escala
   italia_plot_data_normalized <- italia_plot_data %>%
     mutate(
       GDP_normalized = scale(GDP.billion.currency.units),
       CPI_normalized = scale(Consumer.Price.Index..CPI.),
-      Consumo_normalized = scale(Consumo_Privado)
+      Consumo_normalized = scale(Consumo_Privado),
+      Inversion_normalized = scale(Valor_inversion_privada)
     )
   
   # Crear gráfico comparativo con el mismo estilo que los individuales
@@ -1297,9 +1466,31 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data) &
                   "<extra></extra>"
                 )
               }) %>%
+    # Traza para Inversión
+    add_trace(y = ~Inversion_normalized, 
+              type = 'scatter', 
+              mode = 'lines',
+              line = list(color = PANTONE_268_C, width = 3),
+              name = 'Inversión (normalizado)',
+              yaxis = 'y1',
+              customdata = if("Inversion_Privada_pct_cambio" %in% names(italia_plot_data)) ~Inversion_Privada_pct_cambio else NULL,
+              hovertemplate = if("Inversion_Privada_pct_cambio" %in% names(italia_plot_data)) {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Inversión (normalizado):</b> %{y:.2f}<br>",
+                  "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
+                  "<extra></extra>"
+                )
+              } else {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Inversión (normalizado):</b> %{y:.2f}<br>",
+                  "<extra></extra>"
+                )
+              }) %>%
     layout(
       title = list(
-        text = "<b>Comparación PIB vs IPC vs Consumo (Normalizado) - Italia</b>",
+        text = "<b>Comparación PIB vs IPC vs Consumo vs Inversión (Normalizado) - Italia</b>",
         x = 0.5,
         font = list(size = 20, color = PANTONE_262_C)
       ),
@@ -1336,7 +1527,7 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data) &
     )
   
   print(comparacion_plotly)
-  cat("✓ Gráfico comparativo GDP vs CPI vs Consumo creado y mostrado\n")
+  cat("✓ Gráfico comparativo GDP vs CPI vs Consumo vs Inversión creado y mostrado\n")
   
 } else {
   cat("✗ No se pueden crear gráficos comparativos - faltan variables\n")
@@ -1470,7 +1661,7 @@ if("Deflactor_PIB" %in% names(italia_plot_data)) {
 }
 
 # RESUMEN ESTADÍSTICO
-cat("\n=== RESUMEN ESTADÍSTICO: GDP, INFLACIÓN Y CONSUMO ===\n")
+cat("\n=== RESUMEN ESTADÍSTICO: GDP, INFLACIÓN, CONSUMO E INVERSIÓN ===\n")
 
 resumen_gdp_cpi_consumo <- data.frame()
 
@@ -1516,6 +1707,21 @@ if("Consumo_Privado" %in% names(italia_plot_data)) {
   resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, consumo_summary)
 }
 
+if("Valor_inversion_privada" %in% names(italia_plot_data)) {
+  inversion_summary <- italia_plot_data %>%
+    filter(!is.na(Valor_inversion_privada)) %>%
+    summarise(
+      Variable = "Inversión Privada",
+      Media = round(mean(Valor_inversion_privada, na.rm = TRUE), 4),
+      Mediana = round(median(Valor_inversion_privada, na.rm = TRUE), 4),
+      Desviacion = round(sd(Valor_inversion_privada, na.rm = TRUE), 4),
+      Minimo = round(min(Valor_inversion_privada, na.rm = TRUE), 4),
+      Maximo = round(max(Valor_inversion_privada, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Valor_inversion_privada))
+    )
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, inversion_summary)
+}
+
 if("PIB_pct_cambio" %in% names(italia_plot_data)) {
   gdp_pct_summary <- italia_plot_data %>%
     summarise(
@@ -1556,6 +1762,21 @@ if("Consumo_Privado_pct_cambio" %in% names(italia_plot_data)) {
       Observaciones = sum(!is.na(Consumo_Privado_pct_cambio))
     )
   resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, consumo_pct_summary)
+}
+
+if("Inversion_Privada_pct_cambio" %in% names(italia_plot_data)) {
+  inversion_pct_summary <- italia_plot_data %>%
+    filter(!is.na(Inversion_Privada_pct_cambio)) %>%
+    summarise(
+      Variable = "Crecimiento Inversión Trimestral (%)",
+      Media = round(mean(Inversion_Privada_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(Inversion_Privada_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(Inversion_Privada_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(Inversion_Privada_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(Inversion_Privada_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Inversion_Privada_pct_cambio))
+    )
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, inversion_pct_summary)
 }
 
 # Añadir estadísticas del PIB real limpio
@@ -1623,10 +1844,10 @@ if("Deflactor_pct_cambio" %in% names(italia_plot_data)) {
 print(resumen_gdp_cpi_consumo)
 
 # VERIFICACIÓN FINAL DE LAS NUEVAS VARIABLES
-cat("\n=== VERIFICACIÓN FINAL: VARIABLES DEL CONSUMO PRIVADO Y DEFLACTOR ===\n")
-cat("Variables agregadas al dataframe italia_trimestral:\n")
+cat("\n=== VERIFICACIÓN FINAL: VARIABLES DEL CONSUMO PRIVADO, INVERSIÓN PRIVADA Y DEFLACTOR ===\n")
 nuevas_variables <- c("Consumo_Privado", "Consumo_pct_cambio_trimestral", "Consumo_pct_cambio_anual", 
-                      "Consumo_Privado_pct_cambio", "Deflactor_PIB", "Deflactor_pct_cambio")
+                      "Consumo_Privado_pct_cambio", "Valor_inversion_privada", "Inversion_Privada_pct_cambio",
+                      "Deflactor_PIB", "Deflactor_pct_cambio")
 for(var in nuevas_variables) {
   if(var %in% names(italia_trimestral)) {
     cat("✓", var, "- Valores no NA:", sum(!is.na(italia_trimestral[[var]])), "\n")
@@ -1640,5 +1861,96 @@ cat("\n=== ESTRUCTURA FINAL DEL DATAFRAME italia_trimestral ===\n")
 str(italia_trimestral)
 
 cat("\n=== ANÁLISIS COMPLETADO EXITOSAMENTE ===\n")
-cat("El archivo consumo_privado.csv ha sido integrado correctamente en el análisis.\n")
-cat("Se han creado gráficos específicos para el consumo privado y se ha incluido en los análisis de correlación.\n")
+cat("El archivo inversion_privada_limpio.csv ha sido integrado correctamente en el análisis.\n")
+cat("Se han creado gráficos específicos para la inversión privada y se ha incluido en los análisis de correlación.\n")
+
+# CORRECCIÓN DEFINITIVA Y ORDENADA
+cat("=== CORRECCIÓN COMPLETA DE ESCALAS ===\n")
+
+# 1. Primero investiguemos el problema específico del gasto del gobierno
+cat("=== INVESTIGACIÓN DEL PROBLEMA DE ESCALA ===\n")
+
+problema_escala <- italia_trimestral %>%
+  select(Periodo, GDP.billion.currency.units, Total.Government.expenditure) %>%
+  filter(!is.na(Total.Government.expenditure)) %>%
+  head(10) %>%
+  mutate(
+    GDP_millones = GDP.billion.currency.units * 1000,
+    relacion_actual = Total.Government.expenditure / GDP_millones,
+    relacion_corregida = (Total.Government.expenditure / 1000) / GDP_millones
+  )
+
+print(problema_escala)
+
+# 2. Crear dataframe corregido con la escala adecuada
+df_variables_especificas_corregido <- italia_trimestral %>%
+  select(
+    Country, 
+    Periodo,
+    GDP.billion.currency.units,
+    Consumo_Privado, 
+    Valor_inversion_privada,
+    exportaciones,
+    importaciones,
+    Total.Government.expenditure
+  ) %>%
+  mutate(
+    # Convertir GDP de billones a millones
+    GDP_millones = GDP.billion.currency.units * 1000,
+    # Calcular exportaciones netas
+    Exportaciones_Netas = exportaciones - importaciones,
+    # CORREGIR escala del gasto del gobierno (dividir entre 1000)
+    GastoGov_corregido = Total.Government.expenditure / 1000000
+  ) %>%
+  select(
+    Country, 
+    Periodo,
+    GDP_millones,
+    Consumo_Privado,
+    Valor_inversion_privada,
+    Exportaciones_Netas,
+    GastoGov_corregido
+  ) %>%
+  arrange(Periodo)
+
+# 3. Calcular porcentajes CORRECTOS
+df_porcentaje_definitivo <- df_variables_especificas_corregido %>%
+  mutate(
+    Consumo_Pct_PIB = (Consumo_Privado / GDP_millones) * 100,
+    Inversion_Pct_PIB = (Valor_inversion_privada / GDP_millones) * 100,
+    ExportNetas_Pct_PIB = (Exportaciones_Netas / GDP_millones) * 100,
+    GastoGov_Pct_PIB = (GastoGov_corregido / GDP_millones) * 100
+  ) %>%
+  select(
+    Country, 
+    Periodo, 
+    GDP_millones,
+    Consumo_Pct_PIB, 
+    Inversion_Pct_PIB, 
+    ExportNetas_Pct_PIB, 
+    GastoGov_Pct_PIB
+  )
+
+# 4. Mostrar resultados finales
+cat("\n=== PORCENTAJES DEFINITIVOS DEL PIB ===\n")
+print(head(df_porcentaje_definitivo, 20))
+
+# 5. Verificación final de lógica económica
+cat("\n=== VERIFICACIÓN FINAL - PORCENTAJES LÓGICOS ===\n")
+verificacion_final <- df_porcentaje_definitivo %>%
+  summarise(
+    Consumo_Promedio = mean(Consumo_Pct_PIB, na.rm = TRUE),
+    Inversion_Promedio = mean(Inversion_Pct_PIB, na.rm = TRUE),
+    ExportNetas_Promedio = mean(ExportNetas_Pct_PIB, na.rm = TRUE),
+    GastoGov_Promedio = mean(GastoGov_Pct_PIB, na.rm = TRUE),
+    Total_Aproximado = Consumo_Promedio + Inversion_Promedio + ExportNetas_Promedio + GastoGov_Promedio
+  )
+print(verificacion_final)
+
+# 6. Resumen de las escalas corregidas
+cat("\n=== RESUMEN DE ESCALAS CORREGIDAS ===\n")
+resumen_escalas <- df_variables_especificas_corregido %>%
+  select(where(is.numeric)) %>%
+  summary()
+print(resumen_escalas)
+View(italia_trimestral)

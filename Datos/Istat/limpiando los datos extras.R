@@ -499,3 +499,164 @@ summary(consumo_limpio$Consumo_pct_cambio_trimestral, na.rm = TRUE)
 # Guardar datos limpios (opcional)
 write_csv(consumo_limpio, "consumo_privado_limpio.csv")
 write_csv(consumo_trimestral, "consumo_privado_trimestral.csv")
+################################################################################
+################################################################################
+####################### "INVERSIÓN PRIVADA - LIMPIEZA" #########################
+################################################################################
+################################################################################
+
+# Función para limpiar el archivo de inversión privada
+limpiar_inversion_privada <- function(archivo_entrada, archivo_salida = NULL) {
+  
+  # Cargar el archivo
+  inversion <- read_csv(archivo_entrada)
+  
+  cat("Forma original del dataset:", dim(inversion), "\n")
+  cat("Columnas originales:", names(inversion), "\n")
+  
+  # 1. ELIMINAR COLUMNAS REDUNDANTES O INNECESARIAS
+  columnas_a_eliminar <- c(
+    'FREQ', 'Frequency',           # Siempre es 'Q' (Quarterly)
+    'REF_AREA',                    # Duplicado de 'Territory'
+    'DATA_TYPE_AGGR',              # Duplicado de 'Aggregate'
+    'VALUATION',                   # Duplicado de 'Valuation (DESC)'
+    'ADJUSTMENT',                  # Duplicado de 'Adjustment (DESC)'
+    'EDITION',                     # Duplicado de 'Edition (DESC)'
+    'OBS_STATUS',                  # Siempre vacío
+    'NOTE_REF_AREA',               # Siempre vacío
+    'NOTE_DATA_TYPE_AGGR',         # Siempre vacío
+    'NOTE_VALUATION',              # Información redundante
+    'NOTE_ADJUSTMENT',             # Información redundante
+    'NOTE_EDITION',                # Siempre vacío
+    'BASE_PER',                    # Siempre vacío
+    'UNIT_MEAS',                   # Siempre 'EURO'
+    'UNIT_MULT',                   # Siempre '6'
+    'Valuation (NOTE_VALUATION)',  # Información redundante
+    'Adjustment (NOTE_ADJUSTMENT)', # Información redundante
+    'Edition (NOTE_EDITION)'       # Siempre vacío
+  )
+  
+  # Eliminar solo las columnas que existen en el dataframe
+  columnas_existentes <- columnas_a_eliminar[columnas_a_eliminar %in% names(inversion)]
+  inversion_limpio <- inversion %>%
+    select(-any_of(columnas_existentes))
+  
+  cat("Columnas eliminadas:", columnas_existentes, "\n")
+  
+  # 2. RENOMBRAR COLUMNAS PARA MAYOR CLARIDAD
+  inversion_limpio <- inversion_limpio %>%
+    rename(
+      pais = Territory,
+      agregado = Aggregate,
+      tipo_valoracion = `Valuation (DESC)`,
+      tipo_ajuste = `Adjustment (DESC)`,
+      edicion = `Edition (DESC)`,
+      periodo = TIME_PERIOD,
+      valor = Observation,
+      unidad_medida = `Measure unit`,
+      unidad_multiplicacion = `Multiplication unit`
+    )
+  
+  # 3. LIMPIAR Y TRANSFORMAR DATOS
+  inversion_limpio <- inversion_limpio %>%
+    mutate(
+      # Convertir periodo a formato fecha trimestral
+      periodo = as.Date(paste0(gsub("-Q", " ", periodo), " 01"), format = "%Y %q %d"),
+      # Asegurar que valor es numérico
+      valor = as.numeric(valor),
+      # Limpiar textos (eliminar espacios extras)
+      across(where(is.character), ~ trimws(.))
+    )
+  
+  # 4. VERIFICAR Y MANEJAR VALORES NULOS
+  cat("Valores nulos por columna:\n")
+  print(colSums(is.na(inversion_limpio)))
+  
+  # 5. ORDENAR DATOS
+  inversion_limpio <- inversion_limpio %>%
+    arrange(periodo) %>%
+    # Extraer año y trimestre para mayor facilidad
+    mutate(
+      año = year(periodo),
+      trimestre = paste0("Q", quarter(periodo))
+    ) %>%
+    select(año, trimestre, periodo, valor, everything())
+  
+  # 6. VERIFICAR DUPLICADOS
+  duplicados <- sum(duplicated(inversion_limpio))
+  cat("Registros duplicados:", duplicados, "\n")
+  
+  if (duplicados > 0) {
+    inversion_limpio <- inversion_limpio %>%
+      distinct()
+  }
+  
+  # 7. INFORMACIÓN FINAL
+  cat("Forma final del dataset:", dim(inversion_limpio), "\n")
+  cat("Columnas finales:", names(inversion_limpio), "\n")
+  cat("Primeras 5 filas:\n")
+  print(head(inversion_limpio))
+  
+  cat("Resumen estadístico del valor:\n")
+  print(summary(inversion_limpio$valor))
+  
+  # 8. GUARDAR ARCHIVO LIMPIO (si se especifica)
+  if (!is.null(archivo_salida)) {
+    write_csv(inversion_limpio, archivo_salida)
+    cat("Archivo limpio guardado en:", archivo_salida, "\n")
+  }
+  
+  return(inversion_limpio)
+}
+
+# Función adicional para análisis exploratorio
+analizar_inversion <- function(df) {
+  cat("\n", strrep("=", 50), "\n")
+  cat("ANÁLISIS EXPLORATORIO - INVERSIÓN PRIVADA\n")
+  cat(strrep("=", 50), "\n")
+  
+  # Valores únicos por columna categórica
+  columnas_categoricas <- df %>%
+    select(where(is.character)) %>%
+    names()
+  
+  for (col in columnas_categoricas) {
+    cat("Valores únicos en", col, ":", unique(df[[col]]), "\n")
+  }
+  
+  # Evolución temporal
+  cat("Rango temporal:", min(df$periodo), "a", max(df$periodo), "\n")
+  
+  # Estadísticas por año
+  stats_anual <- df %>%
+    group_by(año) %>%
+    summarise(
+      media = mean(valor, na.rm = TRUE),
+      suma = sum(valor, na.rm = TRUE),
+      min = min(valor, na.rm = TRUE),
+      max = max(valor, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  cat("Estadísticas anuales (últimos 5 años):\n")
+  print(tail(stats_anual, 5))
+}
+
+# USO DEL CÓDIGO PARA INVERSIÓN PRIVADA
+tryCatch({
+  # Especificar rutas de archivos
+  archivo_original <- "Datos/Istat/inversion_privada.csv"
+  archivo_limpio <- "Datos/inversion_privada_limpio.csv"
+  
+  # Limpiar el archivo
+  inversion_limpia <- limpiar_inversion_privada(archivo_original, archivo_limpio)
+  
+  # Análisis adicional
+  analizar_inversion(inversion_limpia)
+  
+  cat("\n¡Limpieza de inversión privada completada exitosamente!\n")
+  
+}, error = function(e) {
+  cat("Error durante la limpieza:", conditionMessage(e), "\n")
+})
+
