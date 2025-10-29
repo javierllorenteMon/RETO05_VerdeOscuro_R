@@ -103,7 +103,7 @@ productividad <- cargar_archivo_istat('productividad_laboral_trimestral_italia.c
 revenue_exp <- cargar_archivo_istat('revenue_vs_expenditure.csv')
 comercio_exterior <- cargar_archivo_istat('comercio_exterior_unificado.csv')
 tasas_empleo <- cargar_archivo_istat('definitivo_tasas_empleo_desempleo.csv')
-View(revenue_exp)
+
 # CARGAR LOS CUATRO ARCHIVOS NUEVOS
 confianza_trimestral <- cargar_archivo_istat('confianza_consumidor_trimestral_italia_1999_2022.csv')
 confianza_mensual <- cargar_archivo_istat('confianza_consumidor_mensual_italia_1999_2022.csv')
@@ -1899,6 +1899,7 @@ df_variables_especificas_corregido <- italia_trimestral %>%
     GDP_millones = GDP.billion.currency.units * 1000,
     # Calcular exportaciones netas
     Exportaciones_Netas = exportaciones - importaciones,
+    Exportaciones_Netas = Exportaciones_Netas / 10,
     # CORREGIR escala del gasto del gobierno (dividir entre 1000)
     GastoGov_corregido = Total.Government.expenditure / 1000000
   ) %>%
@@ -1953,4 +1954,4 @@ resumen_escalas <- df_variables_especificas_corregido %>%
   select(where(is.numeric)) %>%
   summary()
 print(resumen_escalas)
-View(italia_trimestral)
+

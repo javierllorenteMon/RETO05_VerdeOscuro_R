@@ -87,7 +87,350 @@ config_comun <- list(
 )
 
 # =============================================================================
-# 1. ÁREA: CRECIMIENTO ECONÓMICO - MODIFICADO (GDP.billion.currency.units)
+# GRÁFICOS ESPECÍFICOS PARA df_variables_especificas_corregido
+# =============================================================================
+
+cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA VARIABLES DEL PIB ===\n")
+
+# Preparar datos para gráficos específicos
+if(exists("df_variables_especificas_corregido")) {
+  df_plot_especificas <- df_variables_especificas_corregido %>%
+    mutate(
+      Fecha = as.Date(paste0(substr(Periodo, 1, 4),
+                             ifelse(substr(Periodo, 6, 7) == "Q1", "-01-01",
+                                    ifelse(substr(Periodo, 6, 7) == "Q2", "-04-01",
+                                           ifelse(substr(Periodo, 6, 7) == "Q3", "-07-01", "-10-01"))))),
+      Year = as.numeric(substr(Periodo, 1, 4)),
+      Quarter = substr(Periodo, 6, 7),
+      Trimestre_Label = case_when(
+        Quarter == "Q1" ~ "1er Trimestre",
+        Quarter == "Q2" ~ "2do Trimestre", 
+        Quarter == "Q3" ~ "3er Trimestre",
+        Quarter == "Q4" ~ "4to Trimestre"
+      )
+    ) %>%
+    arrange(Fecha)
+  
+  # 1. GRÁFICO DEL PIB (GDP_millones)
+  cat("=== GRÁFICO 1: PIB (Millones) ===\n")
+  
+  if("GDP_millones" %in% names(df_plot_especificas)) {
+    p16_pib_millones <- plot_ly(df_plot_especificas, x = ~Fecha) %>%
+      add_trace(y = ~GDP_millones, 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                line = list(color = PANTONE_262_C, width = 3),
+                marker = list(color = PANTONE_262_C, size = 6, opacity = 0.8),
+                name = 'PIB',
+                hovertemplate = paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>PIB:</b> %{y:,.0f} millones<br>",
+                  "<extra></extra>"
+                )) %>%
+      layout(
+        title = list(
+          text = "<b>Evolución del PIB - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = PANTONE_262_C)
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "PIB (Millones de unidades monetarias)",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = PANTONE_262_C),
+          tickfont = list(color = PANTONE_262_C),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = PANTONE_262_C,
+          font = list(color = PANTONE_262_C, size = 12)
+        ),
+        showlegend = FALSE
+      ) %>%
+      config(config_comun)
+    
+    print(p16_pib_millones)
+    cat("✓ Gráfico del PIB creado\n")
+  } else {
+    cat("✗ Variable GDP_millones no encontrada\n")
+  }
+  
+  # 2. GRÁFICO DEL CONSUMO PRIVADO
+  cat("\n=== GRÁFICO 2: CONSUMO PRIVADO ===\n")
+  
+  if("Consumo_Privado" %in% names(df_plot_especificas)) {
+    p17_consumo_privado <- plot_ly(df_plot_especificas, x = ~Fecha) %>%
+      add_trace(y = ~Consumo_Privado, 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                line = list(color = PANTONE_220_C, width = 3),
+                marker = list(color = PANTONE_220_C, size = 6, opacity = 0.8),
+                name = 'Consumo Privado',
+                hovertemplate = paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Consumo Privado:</b> %{y:,.0f}<br>",
+                  "<extra></extra>"
+                )) %>%
+      layout(
+        title = list(
+          text = "<b>Evolución del Consumo Privado - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = PANTONE_220_C)
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "Consumo Privado",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = PANTONE_220_C),
+          tickfont = list(color = PANTONE_220_C),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = PANTONE_220_C,
+          font = list(color = PANTONE_220_C, size = 12)
+        ),
+        showlegend = FALSE
+      ) %>%
+      config(config_comun)
+    
+    print(p17_consumo_privado)
+    cat("✓ Gráfico del Consumo Privado creado\n")
+  } else {
+    cat("✗ Variable Consumo_Privado no encontrada\n")
+  }
+  
+  # 3. GRÁFICO DE LA INVERSIÓN PRIVADA
+  cat("\n=== GRÁFICO 3: INVERSIÓN PRIVADA ===\n")
+  
+  if("Valor_inversion_privada" %in% names(df_plot_especificas)) {
+    p18_inversion_privada <- plot_ly(df_plot_especificas, x = ~Fecha) %>%
+      add_trace(y = ~Valor_inversion_privada, 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                line = list(color = PANTONE_376_C, width = 3),
+                marker = list(color = PANTONE_376_C, size = 6, opacity = 0.8),
+                name = 'Inversión Privada',
+                hovertemplate = paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Inversión Privada:</b> %{y:,.0f}<br>",
+                  "<extra></extra>"
+                )) %>%
+      layout(
+        title = list(
+          text = "<b>Evolución de la Inversión Privada - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = PANTONE_376_C)
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "Inversión Privada",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = PANTONE_376_C),
+          tickfont = list(color = PANTONE_376_C),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = PANTONE_376_C,
+          font = list(color = PANTONE_376_C, size = 12)
+        ),
+        showlegend = FALSE
+      ) %>%
+      config(config_comun)
+    
+    print(p18_inversion_privada)
+    cat("✓ Gráfico de la Inversión Privada creado\n")
+  } else {
+    cat("✗ Variable Valor_inversion_privada no encontrada\n")
+  }
+  
+  # 4. GRÁFICO DE EXPORTACIONES NETAS
+  cat("\n=== GRÁFICO 4: EXPORTACIONES NETAS ===\n")
+  
+  if("Exportaciones_Netas" %in% names(df_plot_especificas)) {
+    p19_exportaciones_netas <- plot_ly(df_plot_especificas, x = ~Fecha) %>%
+      add_trace(y = ~Exportaciones_Netas, 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                line = list(color = "#0055A4", width = 3),  # Azul para exportaciones
+                marker = list(color = "#0055A4", size = 6, opacity = 0.8),
+                name = 'Exportaciones Netas',
+                hovertemplate = paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Exportaciones Netas:</b> %{y:,.0f}<br>",
+                  "<extra></extra>"
+                )) %>%
+      layout(
+        title = list(
+          text = "<b>Evolución de las Exportaciones Netas - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = "#0055A4")
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "Exportaciones Netas (Export - Import)",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = "#0055A4"),
+          tickfont = list(color = "#0055A4"),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = "#0055A4",
+          font = list(color = "#0055A4", size = 12)
+        ),
+        showlegend = FALSE
+      ) %>%
+      config(config_comun)
+    
+    print(p19_exportaciones_netas)
+    cat("✓ Gráfico de Exportaciones Netas creado\n")
+  } else {
+    cat("✗ Variable Exportaciones_Netas no encontrada\n")
+  }
+  
+  # 5. GRÁFICO DEL GASTO DEL GOBIERNO
+  cat("\n=== GRÁFICO 5: GASTO DEL GOBIERNO ===\n")
+  
+  if("GastoGov_corregido" %in% names(df_plot_especificas)) {
+    p20_gasto_gobierno <- plot_ly(df_plot_especificas, x = ~Fecha) %>%
+      add_trace(y = ~GastoGov_corregido, 
+                type = 'scatter', 
+                mode = 'lines+markers',
+                line = list(color = "#8A2BE2", width = 3),  # Violeta para gasto gobierno
+                marker = list(color = "#8A2BE2", size = 6, opacity = 0.8),
+                name = 'Gasto del Gobierno',
+                hovertemplate = paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Gasto del Gobierno:</b> %{y:,.0f}<br>",
+                  "<extra></extra>"
+                )) %>%
+      layout(
+        title = list(
+          text = "<b>Evolución del Gasto del Gobierno - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = "#8A2BE2")
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "Gasto del Gobierno (Millones)",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = "#8A2BE2"),
+          tickfont = list(color = "#8A2BE2"),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = "#8A2BE2",
+          font = list(color = "#8A2BE2", size = 12)
+        ),
+        showlegend = FALSE
+      ) %>%
+      config(config_comun)
+    
+    print(p20_gasto_gobierno)
+    cat("✓ Gráfico del Gasto del Gobierno creado\n")
+  } else {
+    cat("✗ Variable GastoGov_corregido no encontrada\n")
+  }
+  
+  # 6. GRÁFICO COMPARATIVO DE COMPONENTES DEL PIB (SIN PIB)
+  cat("\n=== GRÁFICO 6: COMPARATIVO DE COMPONENTES DEL PIB ===\n")
+  
+  # Crear gráfico comparativo de componentes del PIB (sin PIB)
+  variables_comparar <- c("Consumo_Privado", "Valor_inversion_privada", 
+                          "GastoGov_corregido", "Exportaciones_Netas")
+  variables_existentes <- variables_comparar[variables_comparar %in% names(df_plot_especificas)]
+  
+  if(length(variables_existentes) >= 2) {
+    p21_comparativo_componentes <- plot_ly(df_plot_especificas, x = ~Fecha)
+    
+    colores <- c(PANTONE_220_C, PANTONE_376_C, "#8A2BE2", "#0055A4")
+    nombres <- c("Consumo Privado", "Inversión Privada", "Gasto Gobierno", "Exportaciones Netas")
+    
+    for(i in seq_along(variables_existentes)) {
+      p21_comparativo_componentes <- p21_comparativo_componentes %>%
+        add_trace(y = as.formula(paste0("~", variables_existentes[i])), 
+                  type = 'scatter', 
+                  mode = 'lines',
+                  name = nombres[i],
+                  line = list(color = colores[i], width = 2.5),
+                  hovertemplate = paste(
+                    "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                    paste0("<b>", nombres[i], ":</b> %{y:,.0f}<br>"),
+                    "<extra></extra>"
+                  ))
+    }
+    
+    p21_comparativo_componentes <- p21_comparativo_componentes %>%
+      layout(
+        title = list(
+          text = "<b>Comparativo de Componentes del PIB - Italia</b>",
+          x = 0.5,
+          font = list(size = 20, color = PANTONE_262_C)
+        ),
+        xaxis = crear_eje_x_anual(df_plot_especificas),
+        yaxis = list(
+          title = "Valor (Millones)",
+          gridcolor = PANTONE_9043_C,
+          titlefont = list(color = PANTONE_262_C),
+          tickfont = list(color = PANTONE_262_C),
+          tickformat = ",.0f"
+        ),
+        plot_bgcolor = 'white',
+        paper_bgcolor = 'white',
+        hoverlabel = list(
+          bgcolor = 'white',
+          bordercolor = PANTONE_262_C,
+          font = list(color = PANTONE_262_C, size = 12)
+        ),
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          y = -0.3,
+          xanchor = "center"
+        )
+      ) %>%
+      config(config_comun)
+    
+    print(p21_comparativo_componentes)
+    cat("✓ Gráfico comparativo de componentes del PIB creado (sin PIB)\n")
+  } else {
+    cat("✗ No hay suficientes componentes para crear gráfico comparativo\n")
+  }
+  
+  # RESUMEN FINAL DE GRÁFICOS ESPECÍFICOS CREADOS
+  cat("\n=== RESUMEN DE GRÁFICOS ESPECÍFICOS CREADOS ===\n")
+  variables_graficadas <- c("GDP_millones", "Consumo_Privado", "Valor_inversion_privada", 
+                            "Exportaciones_Netas", "GastoGov_corregido")
+  
+  for(var in variables_graficadas) {
+    if(var %in% names(df_plot_especificas)) {
+      cat("✓ Gráfico individual creado para:", var, "\n")
+    } else {
+      cat("✗ No se pudo crear gráfico para:", var, "(variable no encontrada)\n")
+    }
+  }
+  
+  cat("\n=== GRÁFICOS ESPECÍFICOS CREADOS EXITOSAMENTE ===\n")
+  
+} else {
+  cat("✗ Dataframe df_variables_especificas_corregido no encontrado\n")
+}
+# =============================================================================
+# 1. ÁREA: CRECIMIENTO ECONÓMICO
 # =============================================================================
 cat("=== CREANDO GRÁFICOS DE CRECIMIENTO ECONÓMICO ===\n")
 
@@ -1057,7 +1400,7 @@ exportar_a_png_ajustado <- function(grafico, nombre_archivo, ancho = 10, alto = 
   })
 }
 
-# Función principal para exportar todos los gráficos a PNG
+# Función principal para exportar todos los gráficos a PNG (ACTUALIZADA)
 exportar_todos_los_graficos_png <- function() {
   cat("=== INICIANDO EXPORTACIÓN DE TODOS LOS GRÁFICOS A PNG ===\n\n")
   
@@ -1068,8 +1411,38 @@ exportar_todos_los_graficos_png <- function() {
   resultados <- list()
   contador <- 0
   
-  # Exportar cada gráfico con la función mejorada
+  # Exportar gráficos específicos de df_variables_especificas_corregido (p16-p21)
+  if(exists("p16_pib_millones")) {
+    resultados$pib_millones <- exportar_a_png(p16_pib_millones, "16_PIB_Millones_Italia", 11, 7)
+    if(resultados$pib_millones) contador <- contador + 1
+  }
   
+  if(exists("p17_consumo_privado")) {
+    resultados$consumo_privado <- exportar_a_png(p17_consumo_privado, "17_Consumo_Privado_Italia", 11, 7)
+    if(resultados$consumo_privado) contador <- contador + 1
+  }
+  
+  if(exists("p18_inversion_privada")) {
+    resultados$inversion_privada <- exportar_a_png(p18_inversion_privada, "18_Inversion_Privada_Italia", 11, 7)
+    if(resultados$inversion_privada) contador <- contador + 1
+  }
+  
+  if(exists("p19_exportaciones_netas")) {
+    resultados$exportaciones_netas <- exportar_a_png(p19_exportaciones_netas, "19_Exportaciones_Netas_Italia", 11, 7)
+    if(resultados$exportaciones_netas) contador <- contador + 1
+  }
+  
+  if(exists("p20_gasto_gobierno")) {
+    resultados$gasto_gobierno <- exportar_a_png(p20_gasto_gobierno, "20_Gasto_Gobierno_Italia", 11, 7)
+    if(resultados$gasto_gobierno) contador <- contador + 1
+  }
+  
+  if(exists("p21_comparativo_componentes")) {
+    resultados$comparativo_componentes <- exportar_a_png(p21_comparativo_componentes, "21_Comparativo_Componentes_PIB_Italia", 11, 7)
+    if(resultados$comparativo_componentes) contador <- contador + 1
+  }
+  
+  # Exportar gráficos originales (p1-p15)
   if(exists("p1_pib_nominal")) {
     resultados$pib_nominal <- exportar_a_png(p1_pib_nominal, "01_PIB_Nominal_Italia", 11, 7)
     if(resultados$pib_nominal) contador <- contador + 1
