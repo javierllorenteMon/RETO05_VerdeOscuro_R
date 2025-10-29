@@ -235,30 +235,60 @@ accuracy_PIB_ARIMAX_manual
 ################################################################################
 # 4. Comparación de modelos (añadimos ARIMAX_auto y ARIMAX_manual)
 ################################################################################
-df_accuracy <- data.frame(
-  Modelo = c("ARIMA_manual", "SARIMA_auto", "SARIMA_manual", "AUTO.ARIMA", "ARIMAX_auto", "ARIMAX_manual"),
-  RMSE   = c(accuracy_PIB_Arima["Test set","RMSE"],
-             accuracy_PIB_sarima["Test set","RMSE"],
-             accuracy_PIB_sarima_manual["Test set","RMSE"],
-             accuracy_PIB_AutoArima["Test set","RMSE"],
-             accuracy_PIB_ARIMAX_auto["Test set","RMSE"],
-             accuracy_PIB_ARIMAX_manual["Test set","RMSE"]),
-  MAE    = c(accuracy_PIB_Arima["Test set","MAE"],
-             accuracy_PIB_sarima["Test set","MAE"],
-             accuracy_PIB_sarima_manual["Test set","MAE"],
-             accuracy_PIB_AutoArima["Test set","MAE"],
-             accuracy_PIB_ARIMAX_auto["Test set","MAE"],
-             accuracy_PIB_ARIMAX_manual["Test set","MAE"]),
-  MAPE   = c(accuracy_PIB_Arima["Test set","MAPE"],
-             accuracy_PIB_sarima["Test set","MAPE"],
-             accuracy_PIB_sarima_manual["Test set","MAPE"],
-             accuracy_PIB_AutoArima["Test set","MAPE"],
-             accuracy_PIB_ARIMAX_auto["Test set","MAPE"],
-             accuracy_PIB_ARIMAX_manual["Test set","MAPE"])
-)
+get_row <- function(nombre, fc_vals, model_obj, y_test){
+  # Asegurar que ambos tengan la misma longitud y sin NA
+  min_len <- min(length(fc_vals), length(y_test))
+  fc_vals <- as.numeric(fc_vals[1:min_len])
+  y_test  <- as.numeric(y_test[1:min_len])
+  
+  # Calcular errores
+  err <- y_test - fc_vals
+  err <- err[!is.na(err)]
+  
+  # Calcular métricas
+  ME   <- mean(err)
+  RMSE <- sqrt(mean(err^2))
+  MAE  <- mean(abs(err))
+  MPE  <- mean(100 * err / y_test, na.rm = TRUE)
+  MAPE <- mean(100 * abs(err / y_test), na.rm = TRUE)
+  
+  # Calcular ACF1 de los errores
+  ACF1 <- tryCatch({
+    acf(err, lag.max = 1, plot = FALSE, na.action = na.pass)$acf[2]
+  }, error = function(e) NA)
+  
+  # Calcular AIC si existe el modelo
+  AIC_val <- tryCatch({
+    suppressWarnings(AIC(model_obj))
+  }, error = function(e) NA)
+  
+  # Devolver fila
+  data.frame(
+    Modelo = nombre,
+    ME = ME,
+    RMSE = RMSE,
+    MAE = MAE,
+    MPE = MPE,
+    MAPE = MAPE,
+    ACF1 = ACF1,
+    AIC = AIC_val,
+    check.names = FALSE
+  )
+}
 
-print(df_accuracy)
+h_test <- length(test_PIB)
+tabla_test <- do.call(rbind, list(
+  get_row("ARIMA_manual",     pred_PIB_revert_A[1:h_test],   modelo_PIB_Arima,            test_PIB),
+  get_row("SARIMA_auto",      pred_PIB_sarima$mean[1:h_test], modelo_PIB_sarima,          test_PIB),
+  get_row("SARIMA_manual",    pred_PIB_sarima_manual[1:h_test], modelo_sarima_manual,     test_PIB),
+  get_row("AUTO.ARIMA",       pred_PIB_AutoArima$mean[1:h_test], modelo_PIB_AutoArima,    test_PIB),
+  get_row("ARIMAX_auto",      pred_PIB_ARIMAX_auto$mean[1:h_test], modelo_PIB_ARIMAX_auto, test_PIB),
+  get_row("ARIMAX_manual",    pred_PIB_ARIMAX_manual[1:h_test], modelo_PIB_ARIMAX_manual, test_PIB_adj)
+))
 
+tabla_test <- tabla_test[order(tabla_test$RMSE), ]
+
+print(tabla_test, row.names = FALSE)
 
 ################################################################################
 # 6. Visualización 
@@ -279,37 +309,37 @@ df_total <- data.frame(Trimestre = time(PIB_sinO), PIB = as.numeric(PIB_sinO))
 plot_arima <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_arima, aes(x = Trimestre, y = Pred),
-            color = 'red', linetype = 'dashed', linewidth = 1) +
+            color = '#006D77', linetype = 'dashed', linewidth = 1) +
   labs(title = 'ARIMA manual', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 plot_sarima <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_sarima, aes(x = Trimestre, y = Pred),
-            color = 'green', linetype = 'dashed', linewidth = 1) +
+            color = '#F2689E', linetype = 'dashed', linewidth = 1) +
   labs(title = 'SARIMA', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 plot_sarima_manual <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_sarima_manual, aes(x = Trimestre, y = Pred),
-            color = 'darkgreen', linetype = 'dashed', linewidth = 1) +
+            color = '#A6D608', linetype = 'dashed', linewidth = 1) +
   labs(title = 'SARIMA manual', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 plot_autoarima <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_autoarima, aes(x = Trimestre, y = Pred),
-            color = 'black', linetype = 'dotdash', linewidth = 1) +
+            color = '#4E2869', linetype = 'dotdash', linewidth = 1) +
   labs(title = 'AUTO.ARIMA', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 plot_arimax_auto <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_arimax_auto, aes(x = Trimestre, y = Pred),
-            color = 'orange', linetype = 'dotted', linewidth = 1) +
+            color = '#C01757', linetype = 'dotted', linewidth = 1) +
   labs(title = 'ARIMAX (auto.arima)', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 plot_arimax_manual <- ggplot() +
   geom_line(data = df_total, aes(x = Trimestre, y = PIB), color = 'blue', linewidth = 1) +
   geom_line(data = df_pred_arimax_manual, aes(x = Trimestre, y = Pred),
-            color = 'purple', linetype = 'dashed', linewidth = 1) +
+            color = '#8BC53F', linetype = 'dashed', linewidth = 1) +
   labs(title = 'ARIMAX (manual)', y = 'PIB', x = 'Trimestre') + theme_minimal()
 
 # --- Visualización conjunta ---
@@ -416,33 +446,60 @@ errors_arimax_auto_cv <- actual_cv - pred_arimax_auto_cv
 errors_arimax_manual_cv <- actual_cv - pred_arimax_manual_cv
 
 # Función de métricas
-metrics <- function(errors, actual) {
-  rmse <- sqrt(mean(errors^2, na.rm = TRUE))
-  mae <- mean(abs(errors), na.rm = TRUE)
-  mape <- mean(abs(errors / actual), na.rm = TRUE) * 100
-  return(c(RMSE = rmse, MAE = mae, MAPE = mape))
+metrics_cv <- function(nombre, errors, actual, model_obj = NA) {
+  # Asegurar longitudes compatibles
+  min_len <- min(length(errors), length(actual))
+  errors <- as.numeric(errors[1:min_len])
+  actual <- as.numeric(actual[1:min_len])
+  
+  # Filtrar NAs
+  valid_idx <- !is.na(errors) & !is.na(actual)
+  errors <- errors[valid_idx]
+  actual <- actual[valid_idx]
+  
+  # Métricas
+  ME   <- mean(errors)
+  RMSE <- sqrt(mean(errors^2))
+  MAE  <- mean(abs(errors))
+  MPE  <- mean(100 * errors / actual)
+  MAPE <- mean(100 * abs(errors / actual))
+  
+  # ACF1 de los errores
+  ACF1 <- tryCatch({
+    acf(errors, lag.max = 1, plot = FALSE, na.action = na.pass)$acf[2]
+  }, error = function(e) NA)
+  
+  # AIC (si se pasa un modelo)
+  AIC_val <- tryCatch({
+    suppressWarnings(AIC(model_obj))
+  }, error = function(e) NA)
+  
+  data.frame(
+    Modelo = nombre,
+    ME = ME,
+    RMSE = RMSE,
+    MAE = MAE,
+    MPE = MPE,
+    MAPE = MAPE,
+    ACF1 = ACF1,
+    AIC = AIC_val,
+    check.names = FALSE
+  )
 }
 
-metrics_arima_manual_cv  <- metrics(errors_arima_manual_cv, actual_cv)
-metrics_sarima_cv <- metrics(errors_sarima_cv, actual_cv)
-metrics_sarima_manual_cv <- metrics(errors_sarima_manual_cv, actual_cv)
-metrics_autoarima_cv <- metrics(errors_autoarima_cv, actual_cv)
-metrics_arimax_auto_cv <- metrics(errors_arimax_auto_cv, actual_cv)
-metrics_arimax_manual_cv <- metrics(errors_arimax_manual_cv, actual_cv)
+tabla_cv <- do.call(rbind, list(
+  metrics_cv("ARIMA_manual_CV",  errors_arima_manual_cv,  actual_cv, modelo_PIB_Arima),
+  metrics_cv("SARIMA_auto_CV",   errors_sarima_cv,        actual_cv, modelo_PIB_sarima),
+  metrics_cv("SARIMA_manual_CV", errors_sarima_manual_cv, actual_cv, modelo_sarima_manual),
+  metrics_cv("AUTO.ARIMA_CV",    errors_autoarima_cv,     actual_cv, modelo_PIB_AutoArima),
+  metrics_cv("ARIMAX_auto_CV",   errors_arimax_auto_cv,   actual_cv, modelo_PIB_ARIMAX_auto),
+  metrics_cv("ARIMAX_manual_CV", errors_arimax_manual_cv, actual_cv, modelo_PIB_ARIMAX_manual)
+))
 
-# Tabla comparativa CV
-df_metrics_cv <- data.frame(
-  Modelo = c("ARIMA_manual_CV", "SARIMA_auto_CV", "SARIMA_manual_CV", "AUTO.ARIMA_CV",
-             "ARIMAX_auto_CV", "ARIMAX_manual_CV"),
-  RMSE = c(metrics_arima_manual_cv["RMSE"], metrics_sarima_cv["RMSE"], metrics(metrics_sarima_manual_cv, actual_cv)["RMSE"],
-           metrics_autoarima_cv["RMSE"], metrics_arimax_auto_cv["RMSE"], metrics_arimax_manual_cv["RMSE"]),
-  MAE = c(metrics_arima_manual_cv["MAE"], metrics_sarima_cv["MAE"], metrics(metrics_sarima_manual_cv, actual_cv)["MAE"],
-          metrics_autoarima_cv["MAE"], metrics_arimax_auto_cv["MAE"], metrics_arimax_manual_cv["MAE"]),
-  MAPE = c(metrics_arima_manual_cv["MAPE"], metrics_sarima_cv["MAPE"], metrics(metrics_sarima_manual_cv, actual_cv)["MAPE"],
-           metrics_autoarima_cv["MAPE"], metrics_arimax_auto_cv["MAPE"], metrics_arimax_manual_cv["MAPE"])
-)
+tabla_cv <- tabla_cv[order(tabla_cv$RMSE), ]
 
-print(df_metrics_cv)
+print(tabla_cv, row.names = FALSE)
+
 
 ################################################################################
 # 8. Visualización de CV
@@ -469,16 +526,18 @@ plot_cv <- function(df, title, color) {
     theme_minimal()
 }
 
-plot_arima_cv <- plot_cv(df_cv_list$ARIMA_manual, "ARIMA manual", "red")
-plot_sarima_cv <- plot_cv(df_cv_list$SARIMA, "SARIMA", "green")
-plot_sarima_manual_cv <- plot_cv(df_cv_list$SARIMA_manual, "SARIMA manual", "pink")
-plot_autoarima_cv <- plot_cv(df_cv_list$AUTO.ARIMA, "AUTO.ARIMA", "blue")
-plot_arimax_auto_cv <- plot_cv(df_cv_list$ARIMAX_auto, "ARIMAX (auto.arima)", "orange")
-plot_arimax_manual_cv <- plot_cv(df_cv_list$ARIMAX_manual, "ARIMAX (manual)", "purple")
+plot_arima_cv <- plot_cv(df_cv_list$ARIMA_manual, "ARIMA manual", "#006D77")
+plot_sarima_cv <- plot_cv(df_cv_list$SARIMA, "SARIMA", "#F2689E")
+plot_sarima_manual_cv <- plot_cv(df_cv_list$SARIMA_manual, "SARIMA manual", "#A6D608")
+plot_autoarima_cv <- plot_cv(df_cv_list$AUTO.ARIMA, "AUTO.ARIMA", "#4E2869")
+plot_arimax_auto_cv <- plot_cv(df_cv_list$ARIMAX_auto, "ARIMAX (auto.arima)", "#C01757")
+plot_arimax_manual_cv <- plot_cv(df_cv_list$ARIMAX_manual, "ARIMAX (manual)", "darkgreen")
 
-grid.arrange(plot_arima_cv, plot_sarima_cv, plot_sarima_manual_cv, plot_autoarima_cv,
-             plot_arimax_auto_cv, plot_arimax_manual_cv, ncol = 2)
+grafico_cross <- arrangeGrob(plot_arima_cv, plot_sarima_cv, plot_sarima_manual_cv, 
+                 plot_autoarima_cv, plot_arimax_auto_cv, plot_arimax_manual_cv,
+                 ncol = 2)
 
+ggsave("Graficos/Graficos Modelado/GraficoCV.png", grafico_cross, width = 12, height = 10, dpi = 300, bg = "white")
 
 ################################################################################
 # 9. Prediccion del Q4 2022
@@ -602,7 +661,7 @@ final_plot
 predicciones_PIB <- data.frame(
   Anio = c(2022, 2022),
   Trimestre = c("Q3", "Q4"),
-  Prediccion_PIB = c(pred_sarima_manual_final_val[1], pred_sarima_manual_final_val[2])
+  Prediccion_PIB = c(df_pred$Pred[1], df_pred$Pred[2])
 )
 
 # Verificar la tabla
@@ -611,4 +670,3 @@ print(predicciones_PIB)
 # Guardar como archivo RDS
 saveRDS(predicciones_PIB, file = "Datos/Resultados/Pred_PIB_Q3_Q4.rds")
 ggsave("Graficos/Graficos Modelado/GraficoPredPIB.png", final_plot, width = 10, height = 6, dpi = 300, bg = "white")
-
