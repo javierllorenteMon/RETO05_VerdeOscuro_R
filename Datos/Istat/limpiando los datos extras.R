@@ -445,3 +445,57 @@ if("fecha" %in% names(PIB_real_limpio)) {
 PIB_real_limpio <- PIB_real_limpio %>%
   filter(if_any(everything(), ~ !is.na(.)))
 write_csv(PIB_real_limpio, "PIB_real_limpio.csv")
+##############################################################################
+################################################################################
+################################################################################
+# Leer el archivo
+consumo <- read_csv("Datos/Istat/consumoprivado.csv")
+
+# Ver la estructura inicial
+glimpse(consumo)
+
+# Limpiar y seleccionar columnas relevantes
+consumo_limpio <- consumo %>%
+  # Seleccionar solo las columnas necesarias
+  select(TIME_PERIOD, Observation) %>%
+  # Renombrar columnas
+  rename(
+    Periodo = TIME_PERIOD,
+    Consumo_Privado = Observation
+  ) %>%
+  # Convertir periodo a formato fecha (asumiendo que es trimestral)
+  mutate(
+    Periodo = yq(Periodo),  # Convierte "1995-Q1" a fecha
+    Consumo_Privado = as.numeric(Consumo_Privado)
+  ) %>%
+  # Ordenar por fecha
+  arrange(Periodo) %>%
+  # Calcular cambios porcentuales trimestrales y anuales
+  mutate(
+    Consumo_pct_cambio_trimestral = (Consumo_Privado / lag(Consumo_Privado) - 1) * 100,
+    Consumo_pct_cambio_anual = (Consumo_Privado / lag(Consumo_Privado, 4) - 1) * 100
+  )
+
+# Ver resultado
+glimpse(consumo_limpio)
+head(consumo_limpio)
+
+# Opcional: crear versión trimestral con formato "YYYY-QQ"
+consumo_trimestral <- consumo_limpio %>%
+  mutate(
+    Quarter = quarter(Periodo),
+    Year = year(Periodo),
+    Periodo_trimestral = paste0(Year, "-Q", Quarter)
+  ) %>%
+  select(Periodo_trimestral, Consumo_Privado, Consumo_pct_cambio_trimestral, Consumo_pct_cambio_anual)
+
+# Ver datos trimestrales
+head(consumo_trimestral)
+
+# Resumen estadístico
+summary(consumo_limpio$Consumo_Privado)
+summary(consumo_limpio$Consumo_pct_cambio_trimestral, na.rm = TRUE)
+
+# Guardar datos limpios (opcional)
+write_csv(consumo_limpio, "consumo_privado_limpio.csv")
+write_csv(consumo_trimestral, "consumo_privado_trimestral.csv")

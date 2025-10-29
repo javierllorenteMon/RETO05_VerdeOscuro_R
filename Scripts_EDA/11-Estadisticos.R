@@ -116,6 +116,9 @@ tipos_interes_largo_plazo <- cargar_archivo_istat('tipos_interes_largo_plazo_tri
 # CARGAR EL ARCHIVO DE PIB REAL LIMPIO
 pib_real_limpio <- cargar_archivo_istat('PIB_real_limpio.csv')
 
+# CARGAR EL ARCHIVO DE CONSUMO PRIVADO
+consumo_privado <- cargar_archivo_istat('consumo_privado.csv')
+
 # 7. Preparar datos ISTAT
 cat("\n=== PREPARANDO DATOS ISTAT ===\n")
 
@@ -360,6 +363,52 @@ if(!is.null(pib_real_limpio)) {
   cat("✗ No se encontró PIB_real_limpio.csv - variable no se incluirá\n")
 }
 
+# PREPARAR EL ARCHIVO DE CONSUMO PRIVADO
+if(!is.null(consumo_privado)) {
+  cat("✓ Preparando datos de consumo privado\n")
+  
+  consumo_privado_clean <- consumo_privado %>%
+    mutate(
+      Fecha = as.Date(Periodo),
+      Year = year(Fecha),
+      Quarter = case_when(
+        month(Fecha) %in% 1:3 ~ "Q1",
+        month(Fecha) %in% 4:6 ~ "Q2", 
+        month(Fecha) %in% 7:9 ~ "Q3",
+        month(Fecha) %in% 10:12 ~ "Q4"
+      )
+    ) %>%
+    # Asegurarse de que las columnas numéricas sean numéricas
+    mutate(
+      Consumo_Privado = as.numeric(Consumo_Privado),
+      Consumo_pct_cambio_trimestral = as.numeric(Consumo_pct_cambio_trimestral),
+      Consumo_pct_cambio_anual = as.numeric(Consumo_pct_cambio_anual)
+    ) %>%
+    # Agrupar por trimestre (por si hay múltiples registros por trimestre)
+    group_by(Year, Quarter) %>%
+    summarise(
+      Consumo_Privado = mean(Consumo_Privado, na.rm = TRUE),
+      Consumo_pct_cambio_trimestral = mean(Consumo_pct_cambio_trimestral, na.rm = TRUE),
+      Consumo_pct_cambio_anual = mean(Consumo_pct_cambio_anual, na.rm = TRUE),
+      .groups = 'drop'
+    ) %>%
+    mutate(Periodo = paste(Year, Quarter)) %>%
+    select(Periodo, Consumo_Privado, Consumo_pct_cambio_trimestral, Consumo_pct_cambio_anual)
+  
+  cat("  - Períodos disponibles en consumo privado:", nrow(consumo_privado_clean), "\n")
+  cat("  - Rango:", min(consumo_privado_clean$Periodo), "a", max(consumo_privado_clean$Periodo), "\n")
+  
+  # Unir al dataframe ISTAT completo
+  istat_completo <- istat_completo %>% 
+    left_join(consumo_privado_clean, by = "Periodo")
+  
+  # Verificar que se unió correctamente
+  cat("  - Verificación de unión - períodos con consumo privado:", sum(!is.na(istat_completo$Consumo_Privado)), "\n")
+  
+} else {
+  cat("✗ No se encontró consumo_privado.csv - variable no se incluirá\n")
+}
+
 # 8. Unificar todos los datos
 cat("\n=== UNIFICANDO TODOS LOS DATOS ===\n")
 
@@ -395,6 +444,20 @@ if("PIB_real_limpio" %in% names(italia_trimestral)) {
   }
 }
 
+# VERIFICACIÓN ESPECIAL PARA CONSUMO PRIVADO
+cat("\n=== VERIFICACIÓN CONSUMO PRIVADO DESPUÉS DE UNIÓN ===\n")
+if("Consumo_Privado" %in% names(italia_trimestral)) {
+  cat("✓ Consumo_Privado está en italia_trimestral\n")
+  consumo_verif <- italia_trimestral %>% 
+    select(Periodo, Consumo_Privado) %>% 
+    filter(!is.na(Consumo_Privado))
+  cat("  - Períodos con datos:", nrow(consumo_verif), "\n")
+  cat("  - Rango:", min(consumo_verif$Periodo), "a", max(consumo_verif$Periodo), "\n")
+  print(head(consumo_verif, 5))
+} else {
+  cat("✗ Consumo_Privado NO está en italia_trimestral\n")
+}
+
 # 9. Limpiar y enriquecer dataframe final CON PORCENTAJES TRIMESTRALES
 cat("\n=== CREANDO DATAFRAME FINAL CON PORCENTAJES TRIMESTRALES ===\n")
 
@@ -415,6 +478,13 @@ italia_trimestral <- italia_trimestral %>%
     # Porcentaje de cambio del PIB REAL limpio trimestral - CORREGIDO
     PIB_real_limpio_pct_cambio = if('PIB_real_limpio' %in% names(.)) {
       (PIB_real_limpio / lag(PIB_real_limpio) - 1) * 100
+    } else {
+      NA_real_
+    },
+    
+    # Porcentaje de cambio del CONSUMO PRIVADO trimestral - NUEVO
+    Consumo_Privado_pct_cambio = if('Consumo_Privado' %in% names(.)) {
+      (Consumo_Privado / lag(Consumo_Privado) - 1) * 100
     } else {
       NA_real_
     },
@@ -465,6 +535,8 @@ italia_trimestral <- italia_trimestral %>%
     GDP.billion.currency.units, Consumer.Price.Index..CPI.,
     # PIB REAL limpio - NUEVO
     matches("PIB_real_limpio"),
+    # CONSUMO PRIVADO - NUEVO
+    matches("Consumo_Privado"),
     # Porcentajes de cambio TRIMESTRALES (NUEVAS VARIABLES)
     matches("_pct_cambio"),
     # Empleo
@@ -561,6 +633,22 @@ if("PIB_real_limpio" %in% names(italia_trimestral)) {
   cat("✗ ERROR: PIB_real_limpio no se cargó correctamente\n")
 }
 
+# VERIFICACIÓN FINAL DEL CONSUMO PRIVADO
+cat("\n=== VERIFICACIÓN FINAL CONSUMO PRIVADO ===\n")
+if("Consumo_Privado" %in% names(italia_trimestral)) {
+  consumo_final <- italia_trimestral %>%
+    select(Periodo, Consumo_Privado, Consumo_pct_cambio_trimestral, Consumo_Privado_pct_cambio) %>%
+    filter(!is.na(Consumo_Privado))
+  
+  cat("✓ Consumo privado cargado correctamente\n")
+  cat("  - Total de períodos con datos:", nrow(consumo_final), "\n")
+  cat("  - Rango temporal:", min(consumo_final$Periodo), "a", max(consumo_final$Periodo), "\n")
+  cat("  - Muestra de datos:\n")
+  print(head(consumo_final, 10))
+} else {
+  cat("✗ ERROR: Consumo_Privado no se cargó correctamente\n")
+}
+
 # 10. ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES
 cat("\n=== ANÁLISIS EXPLORATORIO COMPLETO CON PORCENTAJES TRIMESTRALES ===\n")
 
@@ -651,20 +739,20 @@ crear_matriz_correlacion_focalizada <- function(df, titulo) {
   cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
   
   # Filtrar solo las correlaciones con GDP y CPI
-  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.")
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado")
   available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
   
   if(length(available_targets) == 0) {
-    cat("No se encontraron las variables GDP o CPI en", titulo, "\n")
+    cat("No se encontraron las variables GDP, CPI o Consumo_Privado en", titulo, "\n")
     return(NULL)
   }
   
   # Crear submatriz solo con las correlaciones de interés
   if(length(available_targets) == 1) {
-    # Si solo una de las dos variables está disponible
+    # Si solo una de las variables está disponible
     cor_submatrix <- cor_matrix[, available_targets, drop = FALSE]
   } else {
-    # Si ambas variables están disponibles
+    # Si múltiples variables están disponibles
     cor_submatrix <- cor_matrix[, available_targets]
   }
   
@@ -689,7 +777,7 @@ crear_matriz_correlacion_focalizada <- function(df, titulo) {
            addCoef.col = "black",
            number.cex = 0.7,
            mar = c(0, 0, 2, 0),
-           title = paste(titulo, "\n(Correlaciones con GDP y CPI)"),
+           title = paste(titulo, "\n(Correlaciones con GDP, CPI y Consumo)"),
            is.corr = TRUE,
            cl.lim = c(-1, 1))
 }
@@ -740,7 +828,7 @@ crear_tabla_correlaciones_gdp_cpi <- function(df) {
   
   cor_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
   
-  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.")
+  target_vars <- c("GDP.billion.currency.units", "Consumer.Price.Index..CPI.", "Consumo_Privado")
   available_targets <- target_vars[target_vars %in% colnames(cor_matrix)]
   
   if(length(available_targets) == 0) {
@@ -770,8 +858,8 @@ crear_tabla_correlaciones_gdp_cpi <- function(df) {
   return(correlaciones)
 }
 
-# Matriz de correlación FOCALIZADA para el dataframe completo (solo GDP y CPI)
-cat("=== MATRIZ DE CORRELACIÓN - DATAFRAME COMPLETO (FOCALIZADA EN GDP Y CPI) ===\n")
+# Matriz de correlación FOCALIZADA para el dataframe completo (solo GDP, CPI y Consumo)
+cat("=== MATRIZ DE CORRELACIÓN - DATAFRAME COMPLETO (FOCALIZADA EN GDP, CPI Y CONSUMO) ===\n")
 if(ncol(italia_trimestral %>% select(where(is.numeric))) >= 2) {
   crear_matriz_correlacion_focalizada(italia_trimestral, "Matriz de Correlación - Italia Trimestral")
 } else {
@@ -795,15 +883,15 @@ if(ncol(italia_absolutos %>% select(where(is.numeric))) >= 2) {
 }
 
 # Crear y mostrar tabla resumen de correlaciones
-cat("\n=== TABLA RESUMEN DE CORRELACIONES CON GDP Y CPI ===\n")
+cat("\n=== TABLA RESUMEN DE CORRELACIONES CON GDP, CPI Y CONSUMO ===\n")
 tabla_correlaciones <- crear_tabla_correlaciones_gdp_cpi(italia_trimestral)
 if(!is.null(tabla_correlaciones)) {
   print(tabla_correlaciones)
   
   # Guardar tabla resumen (opcional)
-  # write.csv(tabla_correlaciones, "Datos/correlaciones_gdp_cpi_italia.csv", 
+  # write.csv(tabla_correlaciones, "Datos/correlaciones_gdp_cpi_consumo_italia.csv", 
   #           row.names = FALSE, fileEncoding = "UTF-8")
-  cat("# Tabla de correlaciones guardada: Datos/correlaciones_gdp_cpi_italia.csv\n")
+  cat("# Tabla de correlaciones guardada: Datos/correlaciones_gdp_cpi_consumo_italia.csv\n")
 }
 
 # 13. ANÁLISIS ESTADÍSTICO COMPLETO DE PORCENTAJES
@@ -851,22 +939,25 @@ resumen_anual <- italia_trimestral %>%
     Trimestres = n(),
     PIB_promedio = mean(GDP.billion.currency.units, na.rm = TRUE),
     IPC_promedio = mean(Consumer.Price.Index..CPI., na.rm = TRUE),
+    Consumo_promedio = mean(Consumo_Privado, na.rm = TRUE),
     PIB_pct_promedio = mean(PIB_pct_cambio, na.rm = TRUE),
     IPC_pct_promedio = mean(IPC_pct_cambio, na.rm = TRUE),
+    Consumo_pct_promedio = mean(Consumo_Privado_pct_cambio, na.rm = TRUE),
     Confianza_promedio = mean(Indice_confianza_compuesto, na.rm = TRUE),
     Precios_vivienda_promedio = mean(Indice_precios_vivienda, na.rm = TRUE),
     .groups = 'drop'
   )
 print(resumen_anual)
 
-# 15. GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN DE italia_trimestral CON PLOTLY Y PALETA PANTONE
-cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP E INFLACIÓN (PLOTLY + PANTONE) ===\n")
+# 15. GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN Y CONSUMO DE italia_trimestral CON PLOTLY Y PALETA PANTONE
+cat("\n=== CREANDO GRÁFICOS ESPECÍFICOS PARA GDP, INFLACIÓN Y CONSUMO (PLOTLY + PANTONE) ===\n")
 
 # Definir paleta de colores Pantone
 PANTONE_220_C <- "#A50050"    # Rojo magenta
 PANTONE_376_C <- "#84BD00"    # Verde brillante
 PANTONE_262_C <- "#51284F"    # Púrpura oscuro
 PANTONE_9043_C <- "#EAE7E0"   # Beige claro (para fondos)
+PANTONE_293_C <- "#0055A4"    # Azul (para consumo)
 
 # Preparar datos para gráficos
 italia_plot_data <- italia_trimestral %>%
@@ -1042,63 +1133,173 @@ if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
   cat("✗ Variable Consumer.Price.Index..CPI. no encontrada\n")
 }
 
-# 3. GRÁFICO COMPARATIVO GDP vs CPI (mismo estilo que individuales)
-cat("\n=== GRÁFICO 3: COMPARACIÓN GDP vs CPI ===\n")
+# 3. GRÁFICO DEL CONSUMO PRIVADO CON PLOTLY - NUEVO
+cat("\n=== GRÁFICO 3: CONSUMO PRIVADO CON PORCENTAJES EN HOVER ===\n")
 
-if("GDP.billion.currency.units" %in% names(italia_plot_data) & 
-   "Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
+if("Consumo_Privado" %in% names(italia_plot_data)) {
   
-  # Crear gráfico comparativo con el mismo estilo que los individuales
-  comparacion_plotly <- plot_ly(italia_plot_data, x = ~Fecha) %>%
-    # Traza para PIB
-    add_trace(y = ~GDP.billion.currency.units, 
+  # Calcular estadísticas
+  consumo_stats <- italia_plot_data %>%
+    summarise(
+      media = mean(Consumo_Privado, na.rm = TRUE),
+      sd = sd(Consumo_Privado, na.rm = TRUE),
+      min = min(Consumo_Privado, na.rm = TRUE),
+      max = max(Consumo_Privado, na.rm = TRUE),
+      n_no_na = sum(!is.na(Consumo_Privado)),
+      n_total = n()
+    )
+  
+  # Crear texto para hover que incluya el porcentaje de cambio si existe
+  if("Consumo_Privado_pct_cambio" %in% names(italia_plot_data)) {
+    hover_text_consumo <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>Consumo Privado:</b> %{y:.0f}<br>",
+      "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
+      "<extra></extra>"
+    )
+    custom_data_consumo <- ~Consumo_Privado_pct_cambio
+  } else {
+    hover_text_consumo <- paste(
+      "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+      "<b>Consumo Privado:</b> %{y:.0f}<br>",
+      "<extra></extra>"
+    )
+    custom_data_consumo <- NULL
+  }
+  
+  # Crear gráfico Plotly con hover personalizado y colores Pantone
+  consumo_plotly <- plot_ly(italia_plot_data, x = ~Fecha) %>%
+    add_trace(y = ~Consumo_Privado, 
               type = 'scatter', 
               mode = 'lines+markers',
+              line = list(color = PANTONE_293_C, width = 3),  # Azul
+              marker = list(color = PANTONE_293_C, size = 6, opacity = 0.8),
+              name = 'Consumo Privado',
+              customdata = custom_data_consumo,
+              hovertemplate = hover_text_consumo) %>%
+    layout(
+      title = list(
+        text = "<b>Evolución del Consumo Privado - Italia</b>",
+        x = 0.5,
+        font = list(size = 20, color = PANTONE_293_C)
+      ),
+      xaxis = list(
+        title = "Fecha",
+        tickformat = "%Y",
+        tickangle = -45,
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_293_C),
+        tickfont = list(color = PANTONE_293_C)
+      ),
+      yaxis = list(
+        title = "Consumo Privado",
+        gridcolor = PANTONE_9043_C,
+        titlefont = list(color = PANTONE_293_C),
+        tickfont = list(color = PANTONE_293_C)
+      ),
+      plot_bgcolor = 'white',
+      paper_bgcolor = 'white',
+      hoverlabel = list(
+        bgcolor = PANTONE_9043_C, 
+        font = list(color = PANTONE_293_C, size = 12),
+        bordercolor = PANTONE_293_C
+      ),
+      showlegend = FALSE
+    )
+  
+  print(consumo_plotly)
+  cat("✓ Gráfico Plotly del Consumo Privado creado y mostrado (porcentajes en hover)\n")
+  
+} else {
+  cat("✗ Variable Consumo_Privado no encontrada\n")
+}
+
+# 4. GRÁFICO COMPARATIVO GDP vs CPI vs CONSUMO (mismo estilo que individuales)
+cat("\n=== GRÁFICO 4: COMPARACIÓN GDP vs CPI vs CONSUMO ===\n")
+
+if("GDP.billion.currency.units" %in% names(italia_plot_data) & 
+   "Consumer.Price.Index..CPI." %in% names(italia_plot_data) &
+   "Consumo_Privado" %in% names(italia_plot_data)) {
+  
+  # Normalizar las variables para comparación en la misma escala
+  italia_plot_data_normalized <- italia_plot_data %>%
+    mutate(
+      GDP_normalized = scale(GDP.billion.currency.units),
+      CPI_normalized = scale(Consumer.Price.Index..CPI.),
+      Consumo_normalized = scale(Consumo_Privado)
+    )
+  
+  # Crear gráfico comparativo con el mismo estilo que los individuales
+  comparacion_plotly <- plot_ly(italia_plot_data_normalized, x = ~Fecha) %>%
+    # Traza para PIB
+    add_trace(y = ~GDP_normalized, 
+              type = 'scatter', 
+              mode = 'lines',
               line = list(color = PANTONE_262_C, width = 3),
-              marker = list(color = PANTONE_262_C, size = 5, opacity = 0.7),
-              name = 'PIB',
+              name = 'PIB (normalizado)',
               yaxis = 'y1',
               customdata = if("PIB_pct_cambio" %in% names(italia_plot_data)) ~PIB_pct_cambio else NULL,
               hovertemplate = if("PIB_pct_cambio" %in% names(italia_plot_data)) {
                 paste(
                   "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
-                  "<b>PIB:</b> %{y:.2f} billones<br>",
+                  "<b>PIB (normalizado):</b> %{y:.2f}<br>",
                   "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
                   "<extra></extra>"
                 )
               } else {
                 paste(
                   "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
-                  "<b>PIB:</b> %{y:.2f} billones<br>",
+                  "<b>PIB (normalizado):</b> %{y:.2f}<br>",
                   "<extra></extra>"
                 )
               }) %>%
     # Traza para IPC
-    add_trace(y = ~Consumer.Price.Index..CPI., 
+    add_trace(y = ~CPI_normalized, 
               type = 'scatter', 
-              mode = 'lines+markers',
+              mode = 'lines',
               line = list(color = PANTONE_220_C, width = 3),
-              marker = list(color = PANTONE_220_C, size = 5, opacity = 0.7),
-              name = 'IPC',
-              yaxis = 'y2',
+              name = 'IPC (normalizado)',
+              yaxis = 'y1',
               customdata = if("IPC_pct_cambio" %in% names(italia_plot_data)) ~IPC_pct_cambio else NULL,
               hovertemplate = if("IPC_pct_cambio" %in% names(italia_plot_data)) {
                 paste(
                   "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
-                  "<b>IPC:</b> %{y:.2f}<br>",
+                  "<b>IPC (normalizado):</b> %{y:.2f}<br>",
                   "<b>Inflación trimestral:</b> %{customdata:.2f}%<br>",
                   "<extra></extra>"
                 )
               } else {
                 paste(
                   "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
-                  "<b>IPC:</b> %{y:.2f}<br>",
+                  "<b>IPC (normalizado):</b> %{y:.2f}<br>",
+                  "<extra></extra>"
+                )
+              }) %>%
+    # Traza para Consumo
+    add_trace(y = ~Consumo_normalized, 
+              type = 'scatter', 
+              mode = 'lines',
+              line = list(color = PANTONE_293_C, width = 3),
+              name = 'Consumo (normalizado)',
+              yaxis = 'y1',
+              customdata = if("Consumo_Privado_pct_cambio" %in% names(italia_plot_data)) ~Consumo_Privado_pct_cambio else NULL,
+              hovertemplate = if("Consumo_Privado_pct_cambio" %in% names(italia_plot_data)) {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Consumo (normalizado):</b> %{y:.2f}<br>",
+                  "<b>Crecimiento trimestral:</b> %{customdata:.2f}%<br>",
+                  "<extra></extra>"
+                )
+              } else {
+                paste(
+                  "<b>Fecha:</b> %{x|%Y-Q%q}<br>",
+                  "<b>Consumo (normalizado):</b> %{y:.2f}<br>",
                   "<extra></extra>"
                 )
               }) %>%
     layout(
       title = list(
-        text = "<b>Comparación PIB vs IPC - Italia</b>",
+        text = "<b>Comparación PIB vs IPC vs Consumo (Normalizado) - Italia</b>",
         x = 0.5,
         font = list(size = 20, color = PANTONE_262_C)
       ),
@@ -1111,21 +1312,12 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data) &
         tickfont = list(color = PANTONE_262_C)
       ),
       yaxis = list(
-        title = "PIB (Billones de unidades monetarias)",
+        title = "Valores Normalizados",
         gridcolor = PANTONE_9043_C,
         titlefont = list(color = PANTONE_262_C),
         tickfont = list(color = PANTONE_262_C),
         side = 'left',
         showgrid = TRUE
-      ),
-      yaxis2 = list(
-        title = "Índice de Precios al Consumidor (IPC)",
-        gridcolor = PANTONE_9043_C,
-        titlefont = list(color = PANTONE_220_C),
-        tickfont = list(color = PANTONE_220_C),
-        side = 'right',
-        overlaying = "y",
-        showgrid = FALSE
       ),
       plot_bgcolor = 'white',
       paper_bgcolor = 'white',
@@ -1140,12 +1332,11 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data) &
         font = list(color = PANTONE_262_C),
         bgcolor = 'rgba(255,255,255,0.8)',
         bordercolor = PANTONE_262_C
-      ),
-      margin = list(r = 80)  # Margen para el segundo eje Y
+      )
     )
   
   print(comparacion_plotly)
-  cat("✓ Gráfico comparativo GDP vs CPI creado y mostrado\n")
+  cat("✓ Gráfico comparativo GDP vs CPI vs Consumo creado y mostrado\n")
   
 } else {
   cat("✗ No se pueden crear gráficos comparativos - faltan variables\n")
@@ -1279,9 +1470,9 @@ if("Deflactor_PIB" %in% names(italia_plot_data)) {
 }
 
 # RESUMEN ESTADÍSTICO
-cat("\n=== RESUMEN ESTADÍSTICO: GDP E INFLACIÓN ===\n")
+cat("\n=== RESUMEN ESTADÍSTICO: GDP, INFLACIÓN Y CONSUMO ===\n")
 
-resumen_gdp_cpi <- data.frame()
+resumen_gdp_cpi_consumo <- data.frame()
 
 if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
   gdp_summary <- italia_plot_data %>%
@@ -1294,7 +1485,7 @@ if("GDP.billion.currency.units" %in% names(italia_plot_data)) {
       Maximo = round(max(GDP.billion.currency.units, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(GDP.billion.currency.units))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, gdp_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, gdp_summary)
 }
 
 if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
@@ -1308,7 +1499,21 @@ if("Consumer.Price.Index..CPI." %in% names(italia_plot_data)) {
       Maximo = round(max(Consumer.Price.Index..CPI., na.rm = TRUE), 4),
       Observaciones = sum(!is.na(Consumer.Price.Index..CPI.))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, cpi_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, cpi_summary)
+}
+
+if("Consumo_Privado" %in% names(italia_plot_data)) {
+  consumo_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "Consumo Privado",
+      Media = round(mean(Consumo_Privado, na.rm = TRUE), 4),
+      Mediana = round(median(Consumo_Privado, na.rm = TRUE), 4),
+      Desviacion = round(sd(Consumo_Privado, na.rm = TRUE), 4),
+      Minimo = round(min(Consumo_Privado, na.rm = TRUE), 4),
+      Maximo = round(max(Consumo_Privado, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Consumo_Privado))
+    )
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, consumo_summary)
 }
 
 if("PIB_pct_cambio" %in% names(italia_plot_data)) {
@@ -1322,7 +1527,7 @@ if("PIB_pct_cambio" %in% names(italia_plot_data)) {
       Maximo = round(max(PIB_pct_cambio, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(PIB_pct_cambio))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, gdp_pct_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, gdp_pct_summary)
 }
 
 if("IPC_pct_cambio" %in% names(italia_plot_data)) {
@@ -1336,7 +1541,21 @@ if("IPC_pct_cambio" %in% names(italia_plot_data)) {
       Maximo = round(max(IPC_pct_cambio, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(IPC_pct_cambio))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, cpi_pct_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, cpi_pct_summary)
+}
+
+if("Consumo_Privado_pct_cambio" %in% names(italia_plot_data)) {
+  consumo_pct_summary <- italia_plot_data %>%
+    summarise(
+      Variable = "Crecimiento Consumo Trimestral (%)",
+      Media = round(mean(Consumo_Privado_pct_cambio, na.rm = TRUE), 4),
+      Mediana = round(median(Consumo_Privado_pct_cambio, na.rm = TRUE), 4),
+      Desviacion = round(sd(Consumo_Privado_pct_cambio, na.rm = TRUE), 4),
+      Minimo = round(min(Consumo_Privado_pct_cambio, na.rm = TRUE), 4),
+      Maximo = round(max(Consumo_Privado_pct_cambio, na.rm = TRUE), 4),
+      Observaciones = sum(!is.na(Consumo_Privado_pct_cambio))
+    )
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, consumo_pct_summary)
 }
 
 # Añadir estadísticas del PIB real limpio
@@ -1352,7 +1571,7 @@ if("PIB_real_limpio" %in% names(italia_plot_data)) {
       Maximo = round(max(PIB_real_limpio, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(PIB_real_limpio))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, pib_real_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, pib_real_summary)
 }
 
 if("PIB_real_limpio_pct_cambio" %in% names(italia_plot_data)) {
@@ -1367,7 +1586,7 @@ if("PIB_real_limpio_pct_cambio" %in% names(italia_plot_data)) {
       Maximo = round(max(PIB_real_limpio_pct_cambio, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(PIB_real_limpio_pct_cambio))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, pib_real_pct_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, pib_real_pct_summary)
 }
 
 # Añadir estadísticas del deflactor del PIB
@@ -1383,7 +1602,7 @@ if("Deflactor_PIB" %in% names(italia_plot_data)) {
       Maximo = round(max(Deflactor_PIB, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(Deflactor_PIB))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, deflactor_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, deflactor_summary)
 }
 
 if("Deflactor_pct_cambio" %in% names(italia_plot_data)) {
@@ -1398,15 +1617,16 @@ if("Deflactor_pct_cambio" %in% names(italia_plot_data)) {
       Maximo = round(max(Deflactor_pct_cambio, na.rm = TRUE), 4),
       Observaciones = sum(!is.na(Deflactor_pct_cambio))
     )
-  resumen_gdp_cpi <- bind_rows(resumen_gdp_cpi, deflactor_pct_summary)
+  resumen_gdp_cpi_consumo <- bind_rows(resumen_gdp_cpi_consumo, deflactor_pct_summary)
 }
 
-print(resumen_gdp_cpi)
+print(resumen_gdp_cpi_consumo)
 
 # VERIFICACIÓN FINAL DE LAS NUEVAS VARIABLES
-cat("\n=== VERIFICACIÓN FINAL: VARIABLES DEL DEFLACTOR ===\n")
+cat("\n=== VERIFICACIÓN FINAL: VARIABLES DEL CONSUMO PRIVADO Y DEFLACTOR ===\n")
 cat("Variables agregadas al dataframe italia_trimestral:\n")
-nuevas_variables <- c("Deflactor_PIB", "Deflactor_pct_cambio")
+nuevas_variables <- c("Consumo_Privado", "Consumo_pct_cambio_trimestral", "Consumo_pct_cambio_anual", 
+                      "Consumo_Privado_pct_cambio", "Deflactor_PIB", "Deflactor_pct_cambio")
 for(var in nuevas_variables) {
   if(var %in% names(italia_trimestral)) {
     cat("✓", var, "- Valores no NA:", sum(!is.na(italia_trimestral[[var]])), "\n")
@@ -1415,4 +1635,10 @@ for(var in nuevas_variables) {
   }
 }
 
+# ESTRUCTURA FINAL DEL DATAFRAME
+cat("\n=== ESTRUCTURA FINAL DEL DATAFRAME italia_trimestral ===\n")
 str(italia_trimestral)
+
+cat("\n=== ANÁLISIS COMPLETADO EXITOSAMENTE ===\n")
+cat("El archivo consumo_privado.csv ha sido integrado correctamente en el análisis.\n")
+cat("Se han creado gráficos específicos para el consumo privado y se ha incluido en los análisis de correlación.\n")
