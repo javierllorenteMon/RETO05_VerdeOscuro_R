@@ -12,6 +12,9 @@
 .RData
 .RDataTmp
 
+# Ignorar todos los archivos de Datos/Originales
+Datos/Originales/*
+
 # User-specific files
 .Ruserdata
 
