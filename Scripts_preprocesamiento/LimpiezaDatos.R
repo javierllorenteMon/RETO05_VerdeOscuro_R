@@ -26,7 +26,6 @@ miss_var_summary(pib_ipc_ITA)
 miss_var_summary(exogenas_ITA)
 
 # Rellenar datos faltantes (son pocos asi que se buscan en internet y se imputan a mano)
-pib_ipc_ITA$GDP.billion.currency.units[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 500.653
 pib_ipc_ITA$Consumer.Price.Index..CPI.[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 114.2
 
 exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 1922.92
@@ -38,7 +37,7 @@ exogenas_ITA$Stock.market.index[exogenas_ITA$Year == 2022 & exogenas_ITA$Month =
 # Eliminar filas con NA para dejar los datos trimestrales (el PIB ya esta trimestral, por eso con eliminar las filas vacias vale)
 pib_ITA <- pib_ipc_ITA %>% 
   filter(!is.na(GDP.billion.currency.units)) %>% 
-  mutate(Quarter = Month/3) %>%
+  mutate(Quarter = ceiling(Month/3)) %>%
   select(Year, Quarter, PIB_t = GDP.billion.currency.units)
 
 # Pasar todos lo demás datos a trimestrales (estan mensuales)
@@ -49,7 +48,7 @@ ipc_ITA <- pib_ipc_ITA %>%
 
 MS_ITA <- exogenas_ITA %>%
   filter(Month %in% c(3,6,9,12)) %>%
-  mutate(Quarter = Month/3) %>%
+  mutate(Quarter = ceiling(Month/3)) %>%
   select(Year, Quarter, MS_t = Money.supply.billion.currency.units)
 
 UR_ITA <- exogenas_ITA %>%
@@ -59,7 +58,7 @@ UR_ITA <- exogenas_ITA %>%
 
 SMI_ITA <- exogenas_ITA %>%
   filter(Month %in% c(3,6,9,12)) %>%
-  mutate(Quarter = Month/3) %>%
+  mutate(Quarter = ceiling(Month/3)) %>%
   select(Year, Quarter, SMI_t = Stock.market.index)
 
 str(pib_ITA)
@@ -74,12 +73,48 @@ SMI_ITA$SMI_t <- as.numeric(SMI_ITA$SMI_t)
 str(MS_ITA)
 str(SMI_ITA)
 
+
+# --- IPC mensual (de pib_ipc_ITA) ---
+ipc_ITA_M <- pib_ipc_ITA %>%
+  arrange(Year, Month) %>%
+  transmute(Year, Month,
+            IPC_M = as.numeric(Consumer.Price.Index..CPI.))
+
+MS_ITA_M <- exogenas_ITA %>%
+  arrange(Year, Month) %>%
+  transmute(Year, Month,
+            MS_M = as.numeric(Money.supply.billion.currency.units)) 
+
+UR_ITA_M <- exogenas_ITA %>%
+  arrange(Year, Month) %>%
+  transmute(Year, Month,
+            UR_M = as.numeric(Unemployment.rate.percent))
+
+
+SMI_ITA_M <- exogenas_ITA %>%
+  arrange(Year, Month) %>%
+  transmute(Year, Month,
+            SMI_M = as.numeric(Stock.market.index))
+
 # Convertir a series temporales trimestrales
-PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 2), frequency = 4)
 IPC_TS <- ts(ipc_ITA$IPC_t, start = c(min(ipc_ITA$Year), min(ipc_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 MS_TS <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 UR_TS <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 3), frequency = 4)
 SMI_TS <- ts(SMI_ITA$SMI_t, start = c(min(SMI_ITA$Year), min(SMI_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+
+# Convertir a series temporales trimestrales
+IPC_TS_M <- ts(ipc_ITA_M$IPC_M, start = c(min(ipc_ITA_M$Year), min(ipc_ITA_M$Month)), frequency = 12)
+IPC_TS_M <- window(IPC_TS_M, end = c(2022, 9))
+
+MS_TS_M  <- ts(MS_ITA_M$MS_M,   start = c(min(MS_ITA_M$Year),  min(MS_ITA_M$Month)),  frequency = 12)
+MS_TS_M  <- window(MS_TS_M, end = c(2022, 9))
+
+UR_TS_M  <- ts(UR_ITA_M$UR_M,   start = c(min(UR_ITA_M$Year),  min(UR_ITA_M$Month)),  frequency = 12)
+UR_TS_M  <- window(UR_TS_M, end = c(2022, 9))
+
+SMI_TS_M <- ts(SMI_ITA_M$SMI_M, start = c(min(SMI_ITA_M$Year), min(SMI_ITA_M$Month)), frequency = 12)
+SMI_TS_M <- window(SMI_TS_M, end = c(2022, 9))
 
 # Analizar series temporales
 class(PIB_TS)
@@ -150,6 +185,13 @@ UR_sinO <- tsclean(UR_TS)
 outliers_SMI <- tsoutliers(SMI_TS)
 outliers_SMI 
 SMI_sinO <- tsclean(SMI_TS)
+
+# OUTLIERS MENSUALES PARA IPC
+# Mensuales
+outliers_IPC_M <- tsoutliers(IPC_TS_M); IPC_sinO_M <- tsclean(IPC_TS_M)
+outliers_MS_M  <- tsoutliers(MS_TS_M);  MS_sinO_M  <- tsclean(MS_TS_M)
+outliers_UR_M  <- tsoutliers(UR_TS_M);  UR_sinO_M  <- tsclean(UR_TS_M)
+outliers_SMI_M <- tsoutliers(SMI_TS_M); SMI_sinO_M <- tsclean(SMI_TS_M)
 
 # Graficar para comparar las series temporales con y sin outliers
 
@@ -230,10 +272,16 @@ saveRDS(MS_sinO, "Datos/transformados/MS_sinO.rds")
 saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
 saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")
 
+saveRDS(IPC_sinO_M, "Datos/transformados/IPC_sinO_M.rds")
+saveRDS(MS_sinO_M, "Datos/transformados/MS_sinO_M.rds")
+saveRDS(UR_sinO_M, "Datos/transformados/UR_sinO_M.rds")
+saveRDS(SMI_sinO_M, "Datos/transformados/SMI_sinO_M.rds")
+
+
 # Guardar graficos
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", grafico_outliers_PIB)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf", grafico_outliers_IPC)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf",  grafico_outliers_MS)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf",  grafico_outliers_UR)
-ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.pdf", grafico_outliers_SMI)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.png", grafico_outliers_PIB, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.png", grafico_outliers_IPC, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.png",  grafico_outliers_MS, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.png",  grafico_outliers_UR, width = 10, height = 6, dpi = 300, bg = "white")
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.png", grafico_outliers_SMI, width = 10, height = 6, dpi = 300, bg = "white")
 
