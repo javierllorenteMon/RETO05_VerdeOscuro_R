@@ -1,173 +1,239 @@
+### RETO 05, VERDE OSCURO, LABORAL KUTXA ###
+
+####### PREPROCESAMIENTO DE DATOS
+
+# Cargar librerias
 library(dplyr)
 library(openxlsx)
 library(naniar)
 library(forecast)
 library(ggplot2)
-Pib_Paises <- read.csv('Datos/Originales/pib_ipc_paises_punto2.csv')
-Exogenas    <- read.xlsx('Datos/Originales/exogenas_paises_punto2.xlsx')
+library(fpp2)
+library(tseries)
 
-# --- Filtro ITA + limpieza básica
-datos1 <- Pib_Paises %>% filter(Code == "ITA")
-datos2 <- Exogenas    %>% filter(Code == "ITA")
+# Cargar ficheros
+pib_ipc_Paises <- read.csv('Datos/Originales/pib_ipc_paises_punto2.csv')
+exogenas <- read.xlsx('Datos/Originales/exogenas_paises_punto2.xlsx')
 
-vis_miss(datos1, cluster = TRUE)
-vis_miss(datos2, cluster = TRUE)
-miss_var_summary(datos1)
+# Filtrar los datos por nuestro país (Italia)
+pib_ipc_ITA <- pib_ipc_Paises %>% filter(Code == "ITA")
+exogenas_ITA <- exogenas %>% filter(Code == "ITA")
 
-# SERIES TEMPORALES CON PIB PAISES
-Datos1 <- datos1 %>%
-  filter(!is.na(GDP.billion.currency.units)) %>%
-  arrange(Year, Month)   # <- importante
+# Analizar NAs
+vis_miss(pib_ipc_ITA)
+vis_miss(exogenas_ITA)
+miss_var_summary(pib_ipc_ITA)
+miss_var_summary(exogenas_ITA)
 
-vis_miss(Datos1, cluster = TRUE)
+# Rellenar datos faltantes (son pocos asi que se buscan en internet y se imputan a mano)
+pib_ipc_ITA$GDP.billion.currency.units[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 500.653
+pib_ipc_ITA$Consumer.Price.Index..CPI.[pib_ipc_ITA$Year == 2022 & pib_ipc_ITA$Month == 9] <- 114.2
 
-# # --- Chequeo de regularidad (opcional pero útil)
-# stopifnot(all(Datos1$Month %in% c(3,6,9,12)))
-# stopifnot(all(table(Datos1$Year) == 4))
+exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 1922.92
+exogenas_ITA$Money.supply.billion.currency.units[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 1915.16
+exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 8] <- 8.1
+exogenas_ITA$Unemployment.rate.percent[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 7.9
+exogenas_ITA$Stock.market.index[exogenas_ITA$Year == 2022 & exogenas_ITA$Month == 9] <- 108.39
 
-# --- Calcular inicio automáticamente
-q_start <- Datos1$Month[1] / 3  
-start_ts <- c(Datos1$Year[1], q_start)
+# Eliminar filas con NA para dejar los datos trimestrales (el PIB ya esta trimestral, por eso con eliminar las filas vacias vale)
+pib_ITA <- pib_ipc_ITA %>% 
+  filter(!is.na(GDP.billion.currency.units)) %>% 
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, PIB_t = GDP.billion.currency.units)
 
-# --- Series univariantes
-GDP_TS <- ts(Datos1$GDP.billion.currency.units, start = start_ts, frequency = 4)
-CPI_TS <- ts(Datos1$Consumer.Price.Index..CPI.,  start = start_ts, frequency = 4)
+# Pasar todos lo demás datos a trimestrales (estan mensuales)
+ipc_ITA <- pib_ipc_ITA %>% 
+  group_by(Year, Quarter = ceiling(Month/3)) %>%
+  summarise(IPC_t = mean(Consumer.Price.Index..CPI., na.rm = TRUE)) %>%
+  ungroup()
 
-class(GDP_TS); class(CPI_TS)
-autoplot(GDP_TS)
-autoplot(CPI_TS)
+MS_ITA <- exogenas_ITA %>%
+  filter(Month %in% c(3,6,9,12)) %>%
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, MS_t = Money.supply.billion.currency.units)
 
-# --- Serie multivariante (PIB + CPI)
-y_multi <- cbind(
-  PIB = Datos1$GDP.billion.currency.units,
-  CPI = Datos1$Consumer.Price.Index..CPI.
+UR_ITA <- exogenas_ITA %>%
+  group_by(Year, Quarter = ceiling(Month/3)) %>%
+  summarise(UR_t = mean(as.numeric(Unemployment.rate.percent), na.rm = TRUE)) %>%
+  ungroup()
+
+SMI_ITA <- exogenas_ITA %>%
+  filter(Month %in% c(3,6,9,12)) %>%
+  mutate(Quarter = Month/3) %>%
+  select(Year, Quarter, SMI_t = Stock.market.index)
+
+str(pib_ITA)
+str(ipc_ITA)
+str(MS_ITA) # esta en character, convertir a numeric para que no de error
+str(UR_ITA)
+str(SMI_ITA) # esta en character, convertir a numeric para que no de error
+
+MS_ITA$MS_t <- as.numeric(MS_ITA$MS_t)
+SMI_ITA$SMI_t <- as.numeric(SMI_ITA$SMI_t)
+
+str(MS_ITA)
+str(SMI_ITA)
+
+# Convertir a series temporales trimestrales
+PIB_TS <- ts(pib_ITA$PIB_t, start = c(min(pib_ITA$Year), min(pib_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+IPC_TS <- ts(ipc_ITA$IPC_t, start = c(min(ipc_ITA$Year), min(ipc_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+MS_TS <- ts(MS_ITA$MS_t, start = c(min(MS_ITA$Year), min(MS_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+UR_TS <- ts(UR_ITA$UR_t, start = c(min(UR_ITA$Year), min(UR_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+SMI_TS <- ts(SMI_ITA$SMI_t, start = c(min(SMI_ITA$Year), min(SMI_ITA$Quarter)), end = c(2022, 3), frequency = 4)
+
+# Analizar series temporales
+class(PIB_TS)
+time(PIB_TS)
+frequency(PIB_TS)
+start(PIB_TS)
+end(PIB_TS)
+autoplot(PIB_TS)
+autoplot(diff(PIB_TS))
+acf(PIB_TS)
+
+class(IPC_TS)
+time(IPC_TS)
+frequency(IPC_TS)
+start(IPC_TS)
+end(IPC_TS)
+autoplot(IPC_TS)
+autoplot(diff(IPC_TS))
+acf(IPC_TS)
+
+class(MS_TS)
+time(MS_TS)
+autoplot(MS_TS)
+frequency(MS_TS)
+start(MS_TS)
+end(MS_TS)
+autoplot(MS_TS)
+autoplot(diff(MS_TS))
+#acf(MS_TS)
+
+class(UR_TS)
+time(UR_TS)
+autoplot(UR_TS)
+frequency(UR_TS)
+start(UR_TS)
+end(UR_TS)
+autoplot(UR_TS)
+autoplot(diff(UR_TS))
+acf(UR_TS)
+
+class(SMI_TS)
+time(SMI_TS)
+autoplot(SMI_TS)
+frequency(SMI_TS)
+start(SMI_TS)
+end(SMI_TS)
+autoplot(SMI_TS)
+autoplot(diff(SMI_TS))
+acf(SMI_TS)
+
+# Detección y corrección de outliers
+outliers_PIB <- tsoutliers(PIB_TS)
+outliers_PIB # index = posición del outlier, replacements = valor corregido sugerido
+PIB_sinO <- tsclean(PIB_TS) # reemplaza los outliers, y rellena NAs si los hay
+
+outliers_IPC <- tsoutliers(IPC_TS)
+outliers_IPC
+IPC_sinO <- tsclean(IPC_TS)
+
+outliers_MS <- tsoutliers(MS_TS)
+outliers_MS
+MS_sinO <- tsclean(MS_TS)
+
+outliers_UR <- tsoutliers(UR_TS)
+outliers_UR
+UR_sinO <- tsclean(UR_TS)
+
+outliers_SMI <- tsoutliers(SMI_TS)
+outliers_SMI 
+SMI_sinO <- tsclean(SMI_TS)
+
+# Graficar para comparar las series temporales con y sin outliers
+
+#PIB
+df_PIB <- data.frame(
+  Year = rep(1996:2022, each=4)[1:length(PIB_TS)],
+  Quarter = rep(1:4, times=length(1996:2022))[1:length(PIB_TS)],
+  PIB = as.numeric(PIB_TS),
+  PIB_sinO = as.numeric(PIB_sinO)
 )
 
-TS_MULTI <- ts(y_multi, start = start_ts, frequency = 4)
-class(TS_MULTI)   # "mts" "ts" "matrix" "array"
-autoplot(TS_MULTI)
+grafico_outliers_PIB <- ggplot(df_PIB, aes(x = Year + (Quarter-1)/4)) +
+  geom_line(aes(y = PIB, color="Original"), size = 0.8) +
+  geom_line(aes(y = PIB_sinO, color="Sin Outliers"), size = 1) +
+  scale_color_manual(values = c("Original" = "gray", "Sin Outliers" = "red")) +
+  labs(x = "Año", y = "PIB (miles de millones €)", color = "Serie")
 
+# IPC
+df_IPC <- data.frame(
+  Year = rep(1996:2022, each = 4)[1:length(IPC_TS)],
+  Quarter = rep(1:4, times = length(1996:2022))[1:length(IPC_TS)],
+  IPC = as.numeric(IPC_TS),
+  IPC_sinO = as.numeric(IPC_sinO)
+)
 
+grafico_outliers_IPC <- ggplot(df_IPC, aes(x=Year + (Quarter-1)/4)) +
+  geom_line(aes(y = IPC, color = "Original"), size = 0.8) +
+  geom_line(aes(y = IPC_sinO, color = "Sin Outliers"), size = 1) +
+  scale_color_manual(values = c("Original" = "gray", "Sin Outliers" = "red")) +
+  labs(x = "Año", y = "IPC", color = "Serie")
 
-# # --- Calcular inicio automáticamente (EXÓGENAS)
-# Datos2 <- datos2 %>%
-#   filter(!is.na(GDP.billion.currency.units)) %>%
-#   arrange(Year, Month)   # <- importante
-# q_startEX  <- Datos2$Month[1] / 3  
-# start_tsEX <- c(Datos2$Year[1], q_startEX)
-# 
-# # --- Series univariantes (usar start_tsEX)
-# GDP_TSEX <- ts(Datos2$GDP.billion.currency.units, start = start_tsEX, frequency = 4)
-# CPI_TSEX <- ts(Datos2$Consumer.Price.Index..CPI.,  start = start_tsEX, frequency = 4)
-# 
-# # --- Serie multivariante (usar y_multiEX + start_tsEX)
-# y_multiEX <- cbind(
-#   PIB = Datos2$GDP.billion.currency.units,
-#   CPI = Datos2$Consumer.Price.Index..CPI.
-# )
-# TS_MULTIEX <- ts(y_multiEX, start = start_tsEX, frequency = 4)
-# 
+#Money SUpply
+df_MS <- data.frame(
+  Year = rep(1996:2022, each = 4)[1:length(MS_TS)],
+  Quarter = rep(1:4, times = length(1996:2022))[1:length(MS_TS)],
+  MS = as.numeric(MS_TS),
+  MS_sinO = as.numeric(MS_sinO)
+)
 
+grafico_outliers_MS <- ggplot(df_MS, aes(x = Year + (Quarter-1)/4)) +
+  geom_line(aes(y = MS, color = "Original"), size = 0.8) +
+  geom_line(aes(y = MS_sinO, color="Sin Outliers"), size = 1) +
+  scale_color_manual(values = c("Original" = "gray", "Sin Outliers" = "red")) +
+  labs(x = "Año", y = "Money Supply", color = "Serie")
 
+# Unemployment Rate 
+df_UR <- data.frame(
+  Year = rep(1996:2022, each = 4)[1:length(UR_TS)],
+  Quarter = rep(1:4, times = length(1996:2022))[1:length(UR_TS)],
+  UR = as.numeric(UR_TS),
+  UR_sinO = as.numeric(UR_sinO)
+)
 
+grafico_outliers_UR <- ggplot(df_UR, aes(x = Year + (Quarter-1)/4)) +
+  geom_line(aes(y = UR, color = "Original"), size = 0.8) +
+  geom_line(aes(y = UR_sinO, color = "Sin Outliers"), size = 1) +
+  scale_color_manual(values = c("Original" = "gray", "Sin Outliers" = "red")) +
+  labs(x = "Año", y = "Tasa de desempleo (%)", color = "Serie")
 
+# Stock Market Index
+df_SMI <- data.frame(
+  Year = rep(1996:2022, each = 4)[1:length(SMI_TS)],
+  Quarter = rep(1:4, times = length(1996:2022))[1:length(SMI_TS)],
+  SMI = as.numeric(SMI_TS),
+  SMI_sinO = as.numeric(SMI_sinO)
+)
 
+grafico_outliers_SMI <- ggplot(df_SMI, aes(x = Year + (Quarter-1)/4)) +
+  geom_line(aes(y = SMI, color = "Original"), size = 0.8) +
+  geom_line(aes(y = SMI_sinO, color = "Sin Outliers"), size = 1) +
+  scale_color_manual(values = c("Original" = "gray", "Sin Outliers" = "red")) +
+  labs(x = "Año", y = "Stock Market Index", color = "Serie")
 
+# Guardar los datos limpios
+saveRDS(PIB_sinO, "Datos/transformados/PIB_sinO.rds")
+saveRDS(IPC_sinO, "Datos/transformados/IPC_sinO.rds")
+saveRDS(MS_sinO, "Datos/transformados/MS_sinO.rds")
+saveRDS(UR_sinO, "Datos/transformados/UR_sinO.rds")
+saveRDS(SMI_sinO, "Datos/transformados/SMI_sinO.rds")
 
+# Guardar graficos
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersPIB.pdf", grafico_outliers_PIB)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersIPC.pdf", grafico_outliers_IPC)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersMS.pdf",  grafico_outliers_MS)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersUR.pdf",  grafico_outliers_UR)
+ggsave("Graficos/Graficos prerprocesamiento/GraficoOutliersSMI.pdf", grafico_outliers_SMI)
 
-
-
-
-
-
-
-#Modelos Predictivos
-# --- Modelos Predictivos (validación) ---
-train <- window(GDP_TS, end = c(2021, 4))
-test  <- window(GDP_TS, start = c(2022, 1), end = c(2022, 3))
-h <- length(test)  # 3
-
-# Modelos base + clásicos
-fc_snaive <- snaive(train, h = h)
-fc_rw     <- rwf(train, h = h, drift = TRUE)
-fit_ets   <- ets(train);   fc_ets   <- forecast(fit_ets, h = h)
-fit_arima <- auto.arima(train, seasonal = TRUE,
-                        stepwise = FALSE, approximation = FALSE)
-fc_arima  <- forecast(fit_arima, h = h)
-
-# Comparación en test
-acc_df <- dplyr::bind_rows(
-  SNAIVE = as.data.frame(accuracy(fc_snaive, test)),
-  RWDRFT = as.data.frame(accuracy(fc_rw,     test)),
-  ETS    = as.data.frame(accuracy(fc_ets,    test)),
-  ARIMA  = as.data.frame(accuracy(fc_arima,  test)),
-  .id = "Modelo"
-) %>%
-  dplyr::select(Modelo, RMSE, MAE, MAPE, MASE) %>%
-  arrange(RMSE)
-
-acc_df
-
-# --- Predicción 2022-Q3 ---
-train_q3 <- window(GDP_TS, end = c(2022, 2))
-fit_q3   <- ets(train_q3)
-fc_q3    <- forecast(fit_q3, h = 1)
-autoplot(fc_q3) + ggtitle("PIB Italia – Predicción 2022 Q3 (ETS)")
-fc_q3$mean
-fc_q3$lower; fc_q3$upper
-
-# --- Predicción 2022-Q4 ---
-train_q4 <- window(GDP_TS, end = c(2022, 3))
-fit_q4   <- ets(train_q4)
-fc_q4    <- forecast(fit_q4, h = 1)
-autoplot(fc_q4) + ggtitle("PIB Italia – Predicción 2022 Q4 (ETS)")
-fc_q4$mean
-fc_q4$lower; fc_q4$upper
-
-
-
-# =============================
-# Modelos Predictivos (IPC)
-# =============================
-
-# --- Validación ---
-ipc_train <- window(CPI_TS, end = c(2021, 4))
-ipc_test  <- window(CPI_TS, start = c(2022, 1), end = c(2022, 3))
-h_ipc <- length(ipc_test)  # 3
-
-# --- Modelos base + clásicos
-fc_ipc_snaive <- snaive(ipc_train, h = h_ipc)
-fc_ipc_rw     <- rwf(ipc_train, h = h_ipc, drift = TRUE)
-fit_ipc_ets   <- ets(ipc_train);   fc_ipc_ets   <- forecast(fit_ipc_ets, h = h_ipc)
-fit_ipc_arima <- auto.arima(ipc_train, seasonal = TRUE,
-                            stepwise = FALSE, approximation = FALSE)
-fc_ipc_arima  <- forecast(fit_ipc_arima, h = h_ipc)
-
-# --- Comparación en test
-acc_df_ipc <- dplyr::bind_rows(
-  SNAIVE = as.data.frame(accuracy(fc_ipc_snaive, ipc_test)),
-  RWDRFT = as.data.frame(accuracy(fc_ipc_rw,     ipc_test)),
-  ETS    = as.data.frame(accuracy(fc_ipc_ets,    ipc_test)),
-  ARIMA  = as.data.frame(accuracy(fc_ipc_arima,  ipc_test)),
-  .id = "Modelo"
-) %>%
-  dplyr::select(Modelo, RMSE, MAE, MAPE, MASE) %>%
-  arrange(RMSE)
-
-acc_df_ipc
-
-# --- Predicción 2022-Q3 ---
-ipc_train_q3 <- window(CPI_TS, end = c(2022, 2))
-fit_ipc_q3   <- ets(ipc_train_q3)
-fc_ipc_q3    <- forecast(fit_ipc_q3, h = 1)
-autoplot(fc_ipc_q3) + ggtitle("IPC Italia – Predicción 2022 Q3 (ETS)")
-fc_ipc_q3$mean
-fc_ipc_q3$lower; fc_ipc_q3$upper
-
-# --- Predicción 2022-Q4 ---
-ipc_train_q4 <- window(CPI_TS, end = c(2022, 3))
-fit_ipc_q4   <- ets(ipc_train_q4)
-fc_ipc_q4    <- forecast(fit_ipc_q4, h = 1)
-autoplot(fc_ipc_q4) + ggtitle("IPC Italia – Predicción 2022 Q4 (ETS)")
-fc_ipc_q4$mean
-fc_ipc_q4$lower; fc_ipc_q4$upper
