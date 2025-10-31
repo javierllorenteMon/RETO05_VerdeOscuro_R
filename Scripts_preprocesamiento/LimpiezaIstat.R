@@ -646,7 +646,7 @@ analizar_inversion <- function(df) {
 tryCatch({
   # Especificar rutas de archivos
   archivo_original <- "Datos/Istat/inversion_privada.csv"
-  archivo_limpio <- "Datos/inversion_privada_limpio.csv"
+  archivo_limpio <- "Datos/Istat/inversion_privada_limpio.csv"
   
   # Limpiar el archivo
   inversion_limpia <- limpiar_inversion_privada(archivo_original, archivo_limpio)
