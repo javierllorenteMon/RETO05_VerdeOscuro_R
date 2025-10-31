@@ -17,6 +17,11 @@ rm(list = ls())
 source("Scripts_preprocesamiento/LimpiezaDatos.R", encoding = "UTF-8")
 rm(list = ls())
 
+# 1-3 Limpieza de datos Istat
+source("Scripts_preprocesamiento/LimpiezaIstat.R", encoding = "UTF-8")
+rm(list = ls())
+
+
 ###############################################################
 # 2 MODELADO
 ###############################################################
