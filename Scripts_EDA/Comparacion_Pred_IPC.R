@@ -1,4 +1,3 @@
-IPC_sinO_M
 IPC_2022Q4_Reales <- read.csv("Datos/Istat/IPC_2022Q4_Reales.csv")
 predicciones <- readRDS("Datos/Resultados/Pred_IPC_2022_Q4.rds")
 

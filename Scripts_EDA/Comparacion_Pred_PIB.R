@@ -2,6 +2,8 @@ library(dplyr)
 library(zoo)
 library(ggplot2)
 
+PIB_sinO <- readRDS("Datos/transformados/PIB_sinO.rds")
+
 PIB_vals <- window(PIB_sinO, start=c(2021,2), end=c(2022,2))
 fechas_hist <- as.yearqtr(time(PIB_vals))
 
