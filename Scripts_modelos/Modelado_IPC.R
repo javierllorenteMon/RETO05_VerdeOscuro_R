@@ -4,6 +4,7 @@
 
 # Cargar librerias
 library(zoo)
+library(cowplot)
 library(car)
 library(dplyr)
 library(openxlsx)
@@ -458,7 +459,7 @@ saveRDS(tabla_test,"Datos/Resultados/Tabla_Antes_CV_IPC.rds")
 ################################################################################
 # 7. CROSS-VALIDATION (Rolling forecast) con los modelos de IPC (h=1)
 ################################################################################
-# # --- Parámetros de CV ---
+# --- Parámetros de CV ---
 # h <- 1
 # n <- length(IPC_sinO)
 # train_size <- max(84, 2*frequency(IPC_sinO) + 24)
@@ -485,7 +486,6 @@ saveRDS(tabla_test,"Datos/Resultados/Tabla_Antes_CV_IPC.rds")
 #   ms_tr  <- window(MS_sinO,  end = time(MS_sinO)[i])
 #   smi_tr <- window(SMI_sinO, end = time(SMI_sinO)[i])
 #   ur_tr  <- window(UR_sinO,  end = time(UR_sinO)[i])
-#   
 #   ms_nx  <- if (i+1 <= length(MS_sinO))  MS_sinO[i+1]  else NA_real_
 #   smi_nx <- if (i+1 <= length(SMI_sinO)) SMI_sinO[i+1] else NA_real_
 #   ur_nx  <- if (i+1 <= length(UR_sinO))  UR_sinO[i+1]  else NA_real_
@@ -604,6 +604,96 @@ saveRDS(tabla_test,"Datos/Resultados/Tabla_Antes_CV_IPC.rds")
 # )
 # print(tab_cv, row.names = FALSE)
 # saveRDS(tab_cv, file = "Datos/Resultados/CV_metrics_IPC.rds")
+# 
+# ##############################################################################
+# # 8. Visualización de Cross-Validation (IPC mensual)
+# ##############################################################################
+# 
+# # --- Utilidades ---
+# align_vec <- function(v, len){
+#   # Devuelve los 'len' últimos valores de v como numérico
+#   if (is.null(v)) return(NULL)
+#   v <- as.numeric(v)
+#   if (length(v) < len) return(NULL)
+#   tail(v, len)
+# }
+# # Índices/fechas del tramo de CV
+# n <- length(IPC_sinO)
+# start_index_cv <- train_size + 1
+# Fechas_cv <- time(IPC_sinO)[start_index_cv:n]
+# Real_cv   <- as.numeric(window(IPC_sinO, start = time(IPC_sinO)[start_index_cv]))
+# L <- length(Real_cv)
+# 
+# # # Alinear predicciones a la longitud del tramo CV (por si hay NA iniciales)
+# preds <- list(
+#   `ARIMA (auto)`          = align_vec(pred_arima1_cv,      L),
+#   `SARIMA (auto)`         = align_vec(pred_sarima_cv,      L),
+#   `ARIMA manual (log)`    = align_vec(pred_arimaEst_cv,    L),
+#   `ARIMAX MS`             = align_vec(pred_arimax_MS_cv,   L),
+#   `ARIMAX MS+SMI`         = align_vec(pred_arimax_MSS_cv,  L),
+#   `ARIMAX MS+SMI+UR`      = align_vec(pred_arimax_MSSU_cv, L)
+# )
+# 
+# # Construir data.frames solo para los que existen
+# df_cv_list <- lapply(names(preds), function(nm){
+#   pv <- preds[[nm]]
+#   if (is.null(pv)) return(NULL)
+#   data.frame(Fecha = Fechas_cv, Real = Real_cv, Pred = pv, Modelo = nm)
+# })
+# df_cv_list <- Filter(Negate(is.null), df_cv_list)
+# 
+# # Si no hay ningún modelo disponible, salimos con aviso
+# if (length(df_cv_list) == 0) {
+#   message("No se encontraron vectores de predicción de CV (pred_*_cv).")
+# } else {
+#   
+#   # Función de trazado: Real (negro) vs Pred (color) con línea discontinua
+#   plot_cv <- function(df, title, color) {
+#     ggplot(df, aes(x = as.Date(as.yearmon(Fecha)))) +
+#       geom_line(aes(y = Real), color = "black", linewidth = 0.9) +
+#       geom_line(aes(y = Pred), color = color, linetype = "dashed", linewidth = 0.9) +
+#       labs(
+#         title = paste0(title, " — Cross-Validation"),
+#         y = "IPC", x = "Mes"
+#       ) +
+#       scale_x_date( limits = as.Date(c("2000-01-01", "2022-12-31")),date_breaks = "2 years", date_labels = "%Y") +
+#       theme_minimal(base_size = 12) +
+#       theme(panel.grid.minor = element_blank())
+#   }
+#   
+#   
+#   # Paleta fija para mantener consistencia
+#   col_map <- c(
+#     `ARIMA (auto)`       = "#E15759",
+#     `SARIMA (auto)`      = "#59A14F",
+#     `ARIMA manual (log)` = "#7B2CBF",
+#     `ARIMAX MS`          = "#4E79A7",
+#     `ARIMAX MS+SMI`      = "#F28E2B",
+#     `ARIMAX MS+SMI+UR`   = "#76B7B2"
+#   )
+#   
+#   # Crear una lista de plots en orden
+#   plots <- lapply(df_cv_list, function(df){
+#     nm <- unique(df$Modelo)
+#     plot_cv(df, nm, col_map[[nm]])
+#   })
+#   
+#   # Mostrar en cuadrícula 2x3 (o lo que toque según cuántos haya)
+#   # Si hay 1 solo, lo imprime sin grid.arrange
+#   if (length(plots) == 1) {
+#     print(plots[[1]])
+#   } else {
+#     do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
+#   }
+# }
+# final_plot_cv <- if (length(plots) == 1) {
+#   plots[[1]]
+# } else {
+#   gridExtra::arrangeGrob(grobs = plots, ncol = 2)
+# }
+# 
+# ggsave("Graficos/CrossValidation_IPC.png", final_plot_cv, width = 12, height = 8, dpi = 150)
+
 tab_cv <- readRDS("Datos/Resultados/CV_metrics_IPC.rds")
 print(tab_cv, row.names = FALSE)
 # 
@@ -788,132 +878,117 @@ to_date_vec <- function(x_ts) as.Date(as.yearmon(time(x_ts)))
 
 # =========================================================
 # 1) Serie completa + pronóstico futuro SARIMA (MODELO_FINAL)
-# (Este código se mantiene igual que el original)
 # =========================================================
-df_obs <- data.frame(
-  fecha = to_date(IPC_sinO),
-  valor = as.numeric(IPC_sinO)
-)
-col80 <- colnames(FC_FUT$lower)[grepl("80", colnames(FC_FUT$lower))][1]
-col95 <- colnames(FC_FUT$lower)[grepl("95", colnames(FC_FUT$lower))][1]
-df_fc <- data.frame(
-  fecha = to_date_vec(FC_FUT$mean),
-  mean  = as.numeric(FC_FUT$mean),
-  lo80  = as.numeric(FC_FUT$lower[, col80]),
-  hi80  = as.numeric(FC_FUT$upper[, col80]),
-  lo95  = as.numeric(FC_FUT$lower[, col95]),
-  hi95  = as.numeric(FC_FUT$upper[, col95])
-)
-test_ini_plot1 <- to_date(test_IPC)[1]
 
-p_full <- ggplot(df_obs, aes(x = fecha, y = valor)) +
-  geom_line(aes(color = "Observado"), linewidth = 0.9) +
-  annotate("rect",
-           xmin = test_ini_plot1, xmax = max(df_obs$fecha),
-           ymin = -Inf,   ymax = Inf,
-           fill = "grey95", alpha = 0.5) +
-  geom_ribbon(data = df_fc, aes(x = fecha, ymin = lo95, ymax = hi95),
-              inherit.aes = FALSE,
-              fill = pal_original["Forecast SARIMA"], alpha = 0.10) +
-  geom_ribbon(data = df_fc, aes(x = fecha, ymin = lo80, ymax = hi80),
-              inherit.aes = FALSE,
-              fill = pal_original["Forecast SARIMA"], alpha = 0.20) +
-  geom_line(data = df_fc, aes(x = fecha, y = mean, color = "Forecast SARIMA"),
-            inherit.aes = FALSE, linewidth = 1.1) +
-  scale_color_manual(values = pal_original) +
-  labs(
-    title    = "IPC — Serie completa y pronóstico 12 meses (SARIMA ganador)",
-    subtitle = "Sombreado = tramo de test | Bandas = IC 80% / 95%",
-    x = "Tiempo", y = "IPC"
-  ) + tema
+fc_manual_q4 <- forecast(MODELO_FINAL_MANUAL, h = 3, level = c(80, 95))
 
-print(p_full)
-ggsave("Graficos/01_serie_completa_mas_forecast.png", p_full, width = 10, height = 5, dpi = 150)
-
-# ================================================
-# 2) Comparativa modelos (2020+) - VERSIÓN MEJORADA
-#    (incluye ARIMA manual)
-# ================================================
-pal_comp <- c(
-  ARIMA1        = "#E15759", # Rojo
-  SARIMA        = "#59A14F", # Verde
-  ARIMAX        = "#4E79A7", # Azul
-  ARIMAEst      = "#7B2CBF", # Morado
-  Observado     = "grey20"   # Gris oscuro
-)
-
-# 1) Observado completo desde 2020
-obs_2020 <- window(IPC_sinO, start = c(2020,1))
-df_obs_2020 <- data.frame(
-  fecha = to_date(obs_2020),
-  y     = as.numeric(obs_2020)
-)
-
-# 2) Predicciones SOLO en tramo de test
-h_test <- length(test_IPC)
-df_pred <- data.frame(
-  fecha        = to_date(test_IPC),
-  ARIMA1       = as.numeric(fc_arima1$mean[1:h_test]),
-  SARIMA       = as.numeric(fc_sarima$mean[1:h_test]),
-  ARIMAEst     = as.numeric(fc_arimaEst_test$mean[1:h_test])
-)
-
-# Añadir ARIMAX solo si existe
-if (exists("fc_MS")) {
-  df_pred$ARIMAX <- as.numeric(fc_MS$mean[1:h_test])
-  model_levels <- c("ARIMA1", "SARIMA", "ARIMAEst", "ARIMAX")
-} else {
-  model_levels <- c("ARIMA1", "SARIMA", "ARIMAEst")
+y_seas_diff_full <- diff(ipc_full_log, lag = 12)
+inv_to_level <- function(x_vec) {
+  y_d1  <- diffinv(as.numeric(x_vec), xi = tail(y_seas_diff_full, 1))[-1]
+  y_lvl <- diffinv(y_d1, lag = 12, xi = tail(ipc_full_log, 12))[-(1:12)]
+  exp(y_lvl)
 }
 
-df_pred_long <- df_pred %>%
-  pivot_longer(-fecha, names_to = "Modelo", values_to = "Pred") %>%
-  mutate(Modelo = factor(Modelo, levels = model_levels))
+# Invertir media e intervalos
+mean_lvl <- inv_to_level(fc_manual_q4$mean)
+lo80     <- inv_to_level(fc_manual_q4$lower[,"80%"])
+hi80     <- inv_to_level(fc_manual_q4$upper[,"80%"])
+lo95     <- inv_to_level(fc_manual_q4$lower[,"95%"])
+hi95     <- inv_to_level(fc_manual_q4$upper[,"95%"])
 
-# Límites del tramo de test para sombrear
-test_ini <- min(df_pred_long$fecha)
-test_fin <- max(df_pred_long$fecha)
+# Crear objeto tipo 'forecast' en la escala original
+FC_Q4_MANUAL_FC <- structure(list(
+  mean  = ts(mean_lvl, start = c(2022, 10), frequency = frequency(IPC_sinO)),
+  lower = cbind("80%" = lo80, "95%" = lo95),
+  upper = cbind("80%" = hi80, "95%" = hi95),
+  level = c(80, 95),
+  x     = IPC_sinO
+), class = "forecast")
 
-p_test_2020_mejorado <- ggplot() +
-  annotate("rect",
-           xmin = test_ini, xmax = test_fin,
-           ymin = -Inf, ymax = Inf,
-           fill = "grey90", alpha = 0.5) +
-  annotate("text",
-           x = test_ini + (test_fin - test_ini) / 2,
-           y = max(df_obs_2020$y, na.rm = TRUE) * 1.004, # etiqueta arriba
-           label = "Tramo de Test",
-           color = "grey40", fontface = "italic", size = 4) +
-  geom_line(data = df_obs_2020,
-            aes(x = fecha, y = y, color = "Observado"),
-            linewidth = 1.3) +
-  geom_line(data = df_pred_long,
-            aes(x = fecha, y = Pred, color = Modelo),
-            linewidth = 1.0, alpha = 0.95) +
-  scale_color_manual(values = pal_comp) +
-  scale_x_date(
-    limits = c(as.Date("2020-01-01"), test_fin + 15),
-    date_breaks = "3 months",
-    date_labels = "%Y-%m"
-  ) +
+df_total <- data.frame(
+  Trimestre = as.Date(as.yearmon(time(IPC_sinO))),
+  PIB       = as.numeric(IPC_sinO)
+)
+
+df_pred2 <- data.frame(
+  Trimestre = as.Date(as.yearmon(time(FC_Q4_MANUAL_FC$mean))),
+  Pred      = as.numeric(FC_Q4_MANUAL_FC$mean),
+  Lower80   = as.numeric(FC_Q4_MANUAL_FC$lower[,"80%"]),
+  Upper80   = as.numeric(FC_Q4_MANUAL_FC$upper[,"80%"]),
+  Lower95   = as.numeric(FC_Q4_MANUAL_FC$lower[,"95%"]),
+  Upper95   = as.numeric(FC_Q4_MANUAL_FC$upper[,"95%"])
+)
+
+# Unión visual (último observado → primer pronóstico)
+df_union <- data.frame(
+  Trimestre = c(tail(df_total$Trimestre,1), df_pred2$Trimestre[1]),
+  Pred      = c(tail(df_total$PIB,1),       df_pred2$Pred[1])
+)
+
+# Rango para el zoom
+x_min <- as.Date("2022-06-01")
+x_max <- as.Date("2022-12-31")
+
+df_total_zoom <- subset(df_total, Trimestre >= x_min & Trimestre <= x_max)
+df_pred2_zoom <- subset(df_pred2, Trimestre >= x_min & Trimestre <= x_max)
+
+breaks_all  <- seq(x_min, x_max, by = "1 month")
+labels_all  <- format(breaks_all, "%Y-%m")
+
+
+p_main <- ggplot() +
+  # Serie observada
+  geom_line(data = df_total, aes(x = Trimestre, y = PIB),
+            color = "#4E2869", linewidth = 1) +
+  # Segmento de unión
+  geom_line(data = df_union, aes(Trimestre, Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  # Bandas de confianza 95 % y 80 %
+  geom_ribbon(data = df_pred2, aes(x = Trimestre, ymin = Lower95, ymax = Upper95),
+              fill = "#8BC53F", alpha = 0.1) +
+  geom_ribbon(data = df_pred2, aes(x = Trimestre, ymin = Lower80, ymax = Upper80),
+              fill = "#8BC53F", alpha = 0.2) +
+  # Línea de predicción
+  geom_line(data = df_pred2, aes(x = Trimestre, y = Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  scale_x_date(limits = as.Date(c("2000-01-01","2023-12-31")),
+               date_breaks = "2 years", date_labels = "%Y") +
   labs(
-    title    = "IPC: Comparativa de Modelos vs. Observado (2020-2022)",
-    subtitle = "Predicciones en el tramo de test (Feb 2022 - Sep 2022)",
-    x = "Fecha (año-mes)", y = "IPC (Índice)", color = ""
+    title = "Predicción IPC Q4 2022 (ARIMA manual)",
+    y = "IPC_sinO", x = "Fecha"
   ) +
-  theme_minimal(base_size = 14) +
+  theme_minimal()
+
+p_zoom <- ggplot() +
+  # Serie observada
+  geom_line(data = df_total_zoom, aes(x = Trimestre, y = PIB),
+            color = "#4E2869", linewidth = 1) +
+  # Segmento de unión
+  geom_line(data = subset(df_union, Trimestre >= x_min & Trimestre <= x_max),
+            aes(Trimestre, Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  # Bandas 95 % y 80 %
+  geom_ribbon(data = df_pred2_zoom, aes(x = Trimestre, ymin = Lower95, ymax = Upper95),
+              fill = "#8BC53F", alpha = 0.1) +
+  geom_ribbon(data = df_pred2_zoom, aes(x = Trimestre, ymin = Lower80, ymax = Upper80),
+              fill = "#8BC53F", alpha = 0.2) +
+  # Línea de predicción
+  geom_line(data = df_pred2_zoom, aes(x = Trimestre, y = Pred),
+            color = "#8BC53F", linewidth = 1, linetype = "dashed") +
+  coord_cartesian(xlim = c(x_min, x_max), expand = FALSE) +
+  scale_x_date(breaks = breaks_all, labels = labels_all, limits = c(x_min, x_max)) +
+  theme_minimal() +
   theme(
-    axis.text.x        = element_text(angle = 45, hjust = 1, size = 11),
-    axis.title         = element_text(size = 12),
-    legend.position    = "top",
-    legend.text        = element_text(size = 12),
-    plot.title         = element_text(face = "bold", size = 16),
-    plot.subtitle      = element_text(color = "grey30", size = 13, margin = margin(b = 10)),
-    panel.grid.minor   = element_blank(),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(linetype = "dashed", color = "grey85")
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.background = element_rect(color = "#C01757", linewidth = 0.5)
   )
 
-print(p_test_2020_mejorado)
-ggsave("Graficos/02_comparativa_test_modelos_2020_MEJORADO.png",
-       p_test_2020_mejorado, width = 12, height = 6, dpi = 150)
+final_plot <- ggdraw() +
+  draw_plot(p_main) +
+  draw_plot(p_zoom, x = 0.60, y = 0.15, width = 0.35, height = 0.35)
+
+final_plot
+
+ggsave("Graficos/Pred_IPC_Q4.png", final_plot, width = 12, height = 6, dpi = 150)
+
